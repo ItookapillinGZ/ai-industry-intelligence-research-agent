@@ -1,0 +1,28 @@
+app:
+  database_path: data/articles.db
+  reports_dir: reports
+  logs_dir: logs
+  request_timeout_seconds: 20
+  title_similarity_threshold: 0.92
+  dedup_lookback_days: 30
+  processing_batch_size: 50
+  report_max_articles: 100
+
+sources:
+  - name: OpenAI News
+    url: https://openai.com/news/rss.xml
+    enabled: true
+    max_items: 100
+    tags: [OpenAI]
+
+  - name: Hugging Face Blog
+    url: https://huggingface.co/blog/feed.xml
+    enabled: true
+    max_items: 100
+    tags: [Hugging Face, Open Source]
+
+  - name: Google DeepMind Blog
+    url: https://deepmind.google/blog/rss.xml
+    enabled: true
+    max_items: 100
+    tags: [Google DeepMind, Research]

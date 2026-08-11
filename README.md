@@ -265,7 +265,7 @@ sources:
 
 ## Phase 2.5: Research Quality Validation
 
-Phase 2.5 is the current project boundary. Phase 3 has not started.
+Phase 2.7 is the current project boundary. Phase 3 has not started.
 
 The research path is now explicit:
 
@@ -317,9 +317,10 @@ Importance ranking stores an audit breakdown for novelty, industry magnitude, so
 authority, source diversity, ecosystem impact, developer impact, creator/UGC impact, and
 recency. No title or article receives an article-specific hard-coded bonus.
 
-UGC relevance is a structured object with level, reason, and affected_areas. Allowed areas
-are creator_tools, content_creation, short_video, distribution, community, and moderation.
-Unrelated events must remain low with no invented impact.
+UGC relevance is a structured object with level, directness, reason, and affected_areas.
+Directness is none, indirect, or direct and does not automatically determine the level. Allowed
+areas are creator_tools, content_creation, short_video, distribution, community, and moderation.
+Unrelated events must remain low/none with no invented impact.
 
 ### Live LLM validation
 
@@ -342,8 +343,8 @@ article content where available. API keys, environment variables, database files
 and unrelated articles are not included in prompts.
 
 Every live or mock research call uses prompts/research_system.txt and
-prompts/research_event.txt. Output must pass strict JSON, source-ID, URL, confidence,
-key-fact, and structured-UGC validation before it is saved.
+prompts/research_event.txt. Output must pass strict JSON, source-ID, URL, evidence-type, claim-confidence,
+verification-level, key-fact, and structured-UGC validation before it is saved.
     enabled: true
     max_items: 100
     tags: [Research]
@@ -354,6 +355,58 @@ key-fact, and structured-UGC validation before it is saved.
 ```bash
 python -m app --config config/sources.yaml --log-level DEBUG events --top 10
 ```
+
+## Phase 2.7: Research Methodology and Human Evaluation
+
+The research methodology is explicit and evidence-bound:
+
+```text
+Event
+  -> Evidence Gathering
+  -> Source Typing
+  -> Evidence Validation
+  -> Evidence-bound LLM Analysis
+  -> Human Evaluation
+```
+
+Evidence sources use a finite taxonomy:
+
+- `official`: first-party announcements, documentation, or model cards;
+- `independent_media`: editorial reporting independent of the subject organization;
+- `research`: papers and technical reports, which do not imply independent replication;
+- `community`: forums, social posts, and community discussion;
+- `other`: sources that do not fit the four research roles above.
+
+Multiple URLs do not equal independent corroboration. Several official pages from one company
+may improve first-party support while still providing no independent verification.
+
+Evidence references distinguish `verbatim_quote` from `paraphrase`. A verbatim quote must be
+found in the supplied snippet or content; an unverified quote is downgraded to a paraphrase.
+Paraphrases are not rendered as quotations. Historical `excerpt` records remain readable through
+the migration layer.
+
+Research confidence is split into:
+
+- `claim_confidence`: confidence that the Evidence Pack supports the brief's core factual claims;
+- `verification_level`: `single_first_party`, `multi_first_party`, `research_supported`,
+  `independently_corrob`, or `independently_replicated`.
+
+`independently_replicated` is reserved for explicit independent technical or benchmark
+replication. Source diversity primarily informs verification, while importance answers a separate
+question: how consequential is the event to the AI industry?
+
+### Human-reviewed pilot over 5 events
+
+| Mode | Briefs | Mean score across five dimensions |
+|---|---:|---:|
+| deterministic | 5 | 2.32/5 |
+| single-source LLM | 5 | 4.04/5 |
+| multi-source LLM | 5 | 4.36/5 |
+
+This is a small human-reviewed pilot evaluation over 5 events, not a statistically powered
+benchmark. The results are directional and should not be interpreted as a general performance
+claim. Scores cover factuality, source coverage, relevance, insightfulness, and clarity; the
+persisted reviewer type is `human/manual`.
 
 ## Testing
 

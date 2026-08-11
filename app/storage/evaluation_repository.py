@@ -25,12 +25,20 @@ class EvaluationRepository:
             ).fetchone()
             if not exists:
                 raise ValueError(f"ResearchBrief not found: {result.research_brief_id}")
-            cursor = connection.execute(
+            connection.execute(
                 """
                 INSERT INTO research_evaluations (
                     research_brief_id, evaluator, factuality, source_coverage,
                     relevance, insightfulness, clarity, notes, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(research_brief_id, evaluator) DO UPDATE SET
+                    factuality = excluded.factuality,
+                    source_coverage = excluded.source_coverage,
+                    relevance = excluded.relevance,
+                    insightfulness = excluded.insightfulness,
+                    clarity = excluded.clarity,
+                    notes = excluded.notes,
+                    created_at = excluded.created_at
                 """,
                 (
                     result.research_brief_id,
@@ -44,8 +52,15 @@ class EvaluationRepository:
                     now,
                 ),
             )
-        result.id = int(cursor.lastrowid)
-        result.created_at = now
+            row = connection.execute(
+                """
+                SELECT id, created_at FROM research_evaluations
+                WHERE research_brief_id = ? AND evaluator = ?
+                """,
+                (result.research_brief_id, result.evaluator),
+            ).fetchone()
+        result.id = int(row["id"])
+        result.created_at = str(row["created_at"])
         return result
 
     def list_with_headlines(self) -> list[tuple[EvaluationResult, str]]:

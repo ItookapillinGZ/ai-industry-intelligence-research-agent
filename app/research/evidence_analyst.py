@@ -25,6 +25,61 @@ UGC_AREAS = {
     "community",
     "moderation",
 }
+EVIDENCE_TYPES = {"verbatim_quote", "paraphrase"}
+VERIFICATION_LEVELS = (
+    "single_first_party",
+    "multi_first_party",
+    "research_supported",
+    "independently_corrob",
+    "independently_replicated",
+)
+
+
+def _normalized_evidence_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _is_verbatim(evidence_text: str, item) -> bool:
+    needle = _normalized_evidence_text(evidence_text)
+    if not needle:
+        return False
+    return any(
+        needle in _normalized_evidence_text(candidate)
+        for candidate in (item.content, item.snippet)
+        if candidate
+    )
+
+
+def _as_paraphrase(value: str) -> str:
+    text = value.strip()
+    pairs = (("\u201c", "\u201d"), ('"', '"'), ("\u2018", "\u2019"), ("'", "'"))
+    for opening, closing in pairs:
+        if text.startswith(opening) and text.endswith(closing) and len(text) > 1:
+            return text[1:-1].strip()
+    return text
+
+
+def verification_level_for_pack(pack: EvidencePack) -> str:
+    types = [item.source_type for item in pack.items]
+    combined = " ".join(
+        f"{item.title} {item.snippet} {item.content}" for item in pack.items
+    ).casefold()
+    has_research = "research" in types
+    has_independent = "independent_media" in types
+    replication_signals = (
+        "independent replication",
+        "independently replicated",
+        "reproduced the benchmark",
+        "reproduced results",
+    )
+    if has_research and has_independent and any(term in combined for term in replication_signals):
+        return "independently_replicated"
+    if has_independent:
+        return "independently_corrob"
+    if has_research:
+        return "research_supported"
+    official_count = sum(item.source_type == "official" for item in pack.items)
+    return "multi_first_party" if official_count >= 2 else "single_first_party"
 
 
 class ResearchValidationError(ValueError):
@@ -67,33 +122,49 @@ def _ugc_from_evidence(pack: EvidencePack) -> UGCRelevance:
     text = " ".join(
         f"{item.title} {item.snippet} {item.content}" for item in pack.items
     ).casefold()
-    signals = {
-        "creator_tools": ("creator tool", "creative control", "editing tool"),
+    direct_signals = {
+        "creator_tools": ("creator tool", "creative tool", "editing tool"),
         "content_creation": (
-            "content creation", "image generation", "video generation", "music generation",
+            "content creation", "audiobook", "narration", "dubbing", "localization pipeline",
         ),
         "short_video": ("short video", "tiktok", "reels", "shorts"),
-        "distribution": ("distribution", "recommendation feed", "reach"),
-        "community": ("community", "user-generated", "ugc"),
-        "moderation": ("moderation", "content safety", "trust and safety"),
+        "distribution": ("content distribution", "recommendation feed", "creator reach"),
+        "community": ("creator community", "user-generated content", "ugc"),
+        "moderation": ("content moderation", "trust and safety"),
     }
-    affected = [
-        area for area, terms in signals.items() if any(term in text for term in terms)
+    indirect_signals = {
+        "content_creation": (
+            "content drafting", "report drafting", "document workflow", "document parsing",
+            "marketing campaign", "image generation", "video generation", "music generation",
+        ),
+    }
+    direct_areas = [
+        area for area, terms in direct_signals.items() if any(term in text for term in terms)
     ]
-    if not affected:
+    indirect_areas = [
+        area for area, terms in indirect_signals.items() if any(term in text for term in terms)
+    ]
+    if direct_areas:
         return UGCRelevance(
-            level="low",
-            reason=(
-                "The supplied evidence does not establish a direct effect on creators, "
-                "content production, short video, distribution, communities, or moderation."
-            ),
-            affected_areas=[],
+            level="high" if len(direct_areas) >= 3 else "medium",
+            directness="direct",
+            reason="The supplied evidence explicitly mentions creator or UGC production workflows.",
+            affected_areas=direct_areas,
         )
-    level = "high" if len(affected) >= 3 else "medium"
+    if indirect_areas:
+        return UGCRelevance(
+            level="medium",
+            directness="indirect",
+            reason="The supplied evidence supports a general content workflow impact, not a creator-specific one.",
+            affected_areas=indirect_areas,
+        )
     return UGCRelevance(
-        level=level,
-        reason="The supplied evidence directly mentions workflows in the affected areas.",
-        affected_areas=affected,
+        level="low",
+        directness="none",
+        reason=(
+            "The supplied evidence does not establish a creator or UGC relationship."
+        ),
+        affected_areas=[],
     )
 
 
@@ -143,7 +214,10 @@ class DeterministicEvidenceAnalyst:
                     source_id=item.source_id,
                     article_id=item.article_id,
                     url=item.url,
-                    excerpt=statement,
+                    evidence_text=statement,
+                    evidence_type=(
+                        "verbatim_quote" if _is_verbatim(statement, item) else "paraphrase"
+                    ),
                 )
             )
 
@@ -195,7 +269,8 @@ class DeterministicEvidenceAnalyst:
                 for item in pack.items
             ],
             uncertainties=uncertainties,
-            confidence=round(confidence, 2),
+            claim_confidence=round(confidence, 2),
+            verification_level=verification_level_for_pack(pack),
             tags=[event.category],
             provider_name=self.provider_name,
             research_mode=pack.mode,
@@ -244,7 +319,8 @@ class EvidenceBoundLLMAnalyst:
         required_fields = {
             "headline", "executive_summary", "what_happened", "key_facts",
             "background", "why_it_matters", "industry_impact", "ugc_relevance",
-            "evidence", "sources", "uncertainties", "confidence", "tags",
+            "evidence", "sources", "uncertainties", "claim_confidence",
+            "verification_level", "tags",
         }
         missing = required_fields - set(data)
         extra = set(data) - required_fields
@@ -290,16 +366,25 @@ class EvidenceBoundLLMAnalyst:
         evidence = []
         evidence_source_ids: set[str] = set()
         for raw in raw_evidence:
-            if not isinstance(raw, dict) or set(raw) != {"claim", "source_id", "url", "excerpt"}:
+            expected_evidence_fields = {
+                "claim", "source_id", "url", "evidence_text", "evidence_type"
+            }
+            if not isinstance(raw, dict) or set(raw) != expected_evidence_fields:
                 raise ResearchValidationError("Evidence entries must match the requested schema")
             sid = str(raw.get("source_id", ""))
             item = allowed.get(sid)
             if item is None or raw.get("url") != item.url:
                 raise ResearchValidationError("Evidence refers to an unknown source")
             claim = str(raw.get("claim", "")).strip()
-            excerpt = str(raw.get("excerpt", "")).strip()
-            if not claim or not excerpt:
-                raise ResearchValidationError("Evidence claim and excerpt must be non-empty")
+            evidence_text = str(raw.get("evidence_text", "")).strip()
+            evidence_type = str(raw.get("evidence_type", "")).strip()
+            if not claim or not evidence_text:
+                raise ResearchValidationError("Evidence claim and evidence_text must be non-empty")
+            if evidence_type not in EVIDENCE_TYPES:
+                raise ResearchValidationError("Invalid evidence_type")
+            if evidence_type == "verbatim_quote" and not _is_verbatim(evidence_text, item):
+                evidence_type = "paraphrase"
+                evidence_text = _as_paraphrase(evidence_text)
             if sid not in listed_source_ids:
                 raise ResearchValidationError("Evidence source must also appear in sources")
             evidence_source_ids.add(sid)
@@ -307,7 +392,8 @@ class EvidenceBoundLLMAnalyst:
                 EvidenceReference(
                     claim=claim, source_id=sid,
                     article_id=item.article_id, url=item.url,
-                    excerpt=excerpt,
+                    evidence_text=evidence_text,
+                    evidence_type=evidence_type,
                 )
             )
 
@@ -328,24 +414,37 @@ class EvidenceBoundLLMAnalyst:
                 raise ResearchValidationError("A key fact must cite a validated evidence source")
 
         raw_ugc = data.get("ugc_relevance")
-        if not isinstance(raw_ugc, dict) or set(raw_ugc) != {"level", "reason", "affected_areas"}:
+        if not isinstance(raw_ugc, dict) or set(raw_ugc) != {
+            "level", "directness", "reason", "affected_areas"
+        }:
             raise ResearchValidationError("ugc_relevance must be a structured object")
         level = str(raw_ugc.get("level", ""))
+        directness = str(raw_ugc.get("directness", ""))
         raw_areas = raw_ugc.get("affected_areas")
         if not isinstance(raw_areas, list) or any(not isinstance(item, str) for item in raw_areas):
             raise ResearchValidationError("affected_areas must be a list of strings")
         areas = [item for item in raw_areas]
-        if level not in {"low", "medium", "high"} or any(area not in UGC_AREAS for area in areas):
-            raise ResearchValidationError("Invalid UGC relevance level or affected area")
+        if (
+            level not in {"low", "medium", "high"}
+            or directness not in {"none", "indirect", "direct"}
+            or any(area not in UGC_AREAS for area in areas)
+        ):
+            raise ResearchValidationError("Invalid UGC relevance level, directness, or affected area")
+        if directness == "none" and areas:
+            raise ResearchValidationError("UGC directness none cannot list affected areas")
         reason = str(raw_ugc.get("reason", "")).strip()
         if not reason:
             raise ResearchValidationError("UGC relevance reason is required")
-        raw_confidence = data.get("confidence")
+        raw_confidence = data.get("claim_confidence")
         if isinstance(raw_confidence, bool) or not isinstance(raw_confidence, (int, float)):
-            raise ResearchValidationError("confidence must be numeric")
-        confidence = float(raw_confidence)
-        if not 0 <= confidence <= 1:
-            raise ResearchValidationError("confidence must be between 0 and 1")
+            raise ResearchValidationError("claim_confidence must be numeric")
+        claim_confidence = float(raw_confidence)
+        if not 0 <= claim_confidence <= 1:
+            raise ResearchValidationError("claim_confidence must be between 0 and 1")
+        raw_verification_level = str(data.get("verification_level", ""))
+        if raw_verification_level not in VERIFICATION_LEVELS:
+            raise ResearchValidationError("Invalid verification_level")
+        verification_level = verification_level_for_pack(pack)
         uncertainties = data.get("uncertainties")
         if not isinstance(uncertainties, list) or any(
             not isinstance(item, str) or not item.strip() for item in uncertainties
@@ -372,10 +471,14 @@ class EvidenceBoundLLMAnalyst:
             what_happened=required_text("what_happened"), key_facts=key_facts,
             background=required_text("background"), why_it_matters=required_text("why_it_matters"),
             industry_impact=required_text("industry_impact"),
-            ugc_relevance=UGCRelevance(level=level, reason=reason, affected_areas=areas),
+            ugc_relevance=UGCRelevance(
+                level=level, directness=directness, reason=reason, affected_areas=areas
+            ),
             evidence=evidence, sources=sources,
             uncertainties=[item.strip() for item in uncertainties],
-            confidence=confidence, tags=[item.strip() for item in tags if item.strip()][:15],
+            claim_confidence=claim_confidence,
+            verification_level=verification_level,
+            tags=[item.strip() for item in tags if item.strip()][:15],
             provider_name=self.provider_name, research_mode=pack.mode,
             generation_type=self.generation_type, evidence_pack_id=pack.id,
         )

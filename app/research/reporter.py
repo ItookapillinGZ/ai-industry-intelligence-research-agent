@@ -61,7 +61,8 @@ class ResearchReportGenerator:
             f"### {index}. {_clean(brief.headline)}",
             "",
             f"- **Importance:** {importance:.2f}/10",
-            f"- **Confidence:** {brief.confidence:.2f}",
+            f"- **Claim confidence:** {brief.claim_confidence:.2f}",
+            f"- **Verification level:** {brief.verification_level}",
             f"- **Research mode:** {brief.research_mode} ({brief.generation_type})",
             f"- **Provider:** {brief.provider_name}",
             f"- **Model:** {brief.model_name or 'not returned'}",
@@ -97,6 +98,7 @@ class ResearchReportGenerator:
                 "#### UGC relevance",
                 "",
                 f"- **Level:** {brief.ugc_relevance.level}",
+                f"- **Directness:** {brief.ugc_relevance.directness}",
                 f"- **Reason:** {brief.ugc_relevance.reason}",
                 f"- **Affected areas:** {', '.join(brief.ugc_relevance.affected_areas) or 'none'}",
                 "",
@@ -108,9 +110,13 @@ class ResearchReportGenerator:
         lines.extend(["", "#### Evidence references", ""])
         for item in brief.evidence:
             lines.append(
-                f"- **{item.source_id}:** {_clean(item.claim)} -- "
-                f"[source]({item.url}); excerpt: {_clean(item.excerpt)}"
+                f"- **{item.source_id}:** {_clean(item.claim)} -- [source]({item.url}) "
+                f"_({item.evidence_type})_"
             )
+            if item.evidence_type == "verbatim_quote":
+                lines.extend(["", f"> {_clean(item.evidence_text)}", ""])
+            else:
+                lines.append(f"  - Paraphrase: {_clean(item.evidence_text)}")
         lines.extend(["", "#### Sources", ""])
         for source in brief.sources:
             lines.append(f"- [{_clean(source.title)}]({source.url}) — {source.source}")

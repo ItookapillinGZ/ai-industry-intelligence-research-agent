@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -36,6 +38,124 @@ class Database:
         columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
         if column not in columns:
             connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+    @staticmethod
+    def _normalized_text(value: str) -> str:
+        return re.sub(r"\s+", " ", value).strip()
+
+    @classmethod
+    def _migrate_phase27_json(cls, connection: sqlite3.Connection) -> None:
+        supplied_by_id: dict[str, dict] = {}
+        supplied_by_url: dict[str, dict] = {}
+        for row in connection.execute("SELECT items FROM evidence_packs"):
+            try:
+                items = json.loads(row["items"] or "[]")
+            except json.JSONDecodeError:
+                continue
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                source_id = str(item.get("source_id", ""))
+                url = str(item.get("url", ""))
+                if source_id:
+                    supplied_by_id[source_id] = item
+                if url:
+                    supplied_by_url[url] = item
+
+        direct_terms = (
+            "creator tools", "explicitly identifies audiobook", "content narration",
+            "dubbing and localization", "short-video production",
+        )
+        for table in ("research_briefs", "research_brief_runs"):
+            rows = connection.execute(
+                f"SELECT id, evidence, sources, ugc_relevance, confidence FROM {table}"
+            ).fetchall()
+            for row in rows:
+                try:
+                    raw_evidence = json.loads(row["evidence"] or "[]")
+                except json.JSONDecodeError:
+                    raw_evidence = []
+                evidence = []
+                for raw in raw_evidence:
+                    if not isinstance(raw, dict):
+                        continue
+                    item = dict(raw)
+                    legacy = "evidence_text" not in item
+                    evidence_text = str(item.pop("excerpt", item.get("evidence_text", "")))
+                    item["evidence_text"] = evidence_text
+                    source = supplied_by_id.get(str(item.get("source_id", "")))
+                    source = source or supplied_by_url.get(str(item.get("url", "")))
+                    supplied_text = ""
+                    if source:
+                        supplied_text = cls._normalized_text(
+                            f"{source.get('content', '')} {source.get('snippet', '')}"
+                        )
+                    is_verbatim = bool(
+                        evidence_text
+                        and supplied_text
+                        and cls._normalized_text(evidence_text) in supplied_text
+                    )
+                    requested_type = str(item.get("evidence_type", ""))
+                    item["evidence_type"] = (
+                        "verbatim_quote"
+                        if is_verbatim and (legacy or requested_type == "verbatim_quote")
+                        else "paraphrase"
+                    )
+                    evidence.append(item)
+
+                try:
+                    ugc = json.loads(row["ugc_relevance"] or "{}")
+                except json.JSONDecodeError:
+                    ugc = {}
+                if not isinstance(ugc, dict):
+                    text = str(row["ugc_relevance"] or "")
+                    level = (
+                        "high" if text.casefold().startswith("high")
+                        else "medium" if text.casefold().startswith("medium")
+                        else "low"
+                    )
+                    ugc = {"level": level, "reason": text, "affected_areas": []}
+                areas = [str(item) for item in ugc.get("affected_areas", [])]
+                reason_text = str(ugc.get("reason", "")).casefold()
+                if not areas:
+                    directness = "none"
+                elif any(term in reason_text for term in direct_terms):
+                    directness = "direct"
+                else:
+                    directness = "indirect"
+                ugc["directness"] = directness
+
+                try:
+                    sources = json.loads(row["sources"] or "[]")
+                except json.JSONDecodeError:
+                    sources = []
+                source_types = [
+                    str(item.get("source_type", "other"))
+                    for item in sources if isinstance(item, dict)
+                ]
+                if "independent_media" in source_types:
+                    verification_level = "independently_corrob"
+                elif "research" in source_types:
+                    verification_level = "research_supported"
+                elif sum(item == "official" for item in source_types) >= 2:
+                    verification_level = "multi_first_party"
+                else:
+                    verification_level = "single_first_party"
+                connection.execute(
+                    f"""
+                    UPDATE {table}
+                    SET evidence = ?, ugc_relevance = ?, claim_confidence = ?,
+                        verification_level = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        json.dumps(evidence, ensure_ascii=False),
+                        json.dumps(ugc, ensure_ascii=False),
+                        float(row["confidence"]),
+                        verification_level,
+                        row["id"],
+                    ),
+                )
 
     def initialize(self) -> None:
         with self.connect() as connection:
@@ -123,6 +243,8 @@ class Database:
                     sources TEXT NOT NULL DEFAULT '[]',
                     uncertainties TEXT NOT NULL DEFAULT '[]',
                     confidence REAL NOT NULL,
+                    claim_confidence REAL,
+                    verification_level TEXT,
                     tags TEXT NOT NULL DEFAULT '[]',
                     provider_name TEXT NOT NULL,
                     created_at TEXT NOT NULL,
@@ -177,6 +299,8 @@ class Database:
                     sources TEXT NOT NULL DEFAULT '[]',
                     uncertainties TEXT NOT NULL DEFAULT '[]',
                     confidence REAL NOT NULL,
+                    claim_confidence REAL,
+                    verification_level TEXT,
                     tags TEXT NOT NULL DEFAULT '[]',
                     provider_name TEXT NOT NULL,
                     model_name TEXT,
@@ -233,6 +357,9 @@ class Database:
                 "usage",
                 "TEXT NOT NULL DEFAULT '{}'",
             )
+            for table in ("research_briefs", "research_brief_runs"):
+                self._ensure_column(connection, table, "claim_confidence", "REAL")
+                self._ensure_column(connection, table, "verification_level", "TEXT")
             connection.execute(
                 "INSERT OR IGNORE INTO schema_migrations VALUES (1, 'phase 1 base schema', datetime('now'))"
             )
@@ -317,4 +444,23 @@ class Database:
             connection.execute(
                 "INSERT OR IGNORE INTO schema_migrations VALUES "
                 "(5, 'strict evidence source taxonomy', datetime('now'))"
+            )
+            phase27_migrated = connection.execute(
+                "SELECT 1 FROM schema_migrations WHERE version = 6"
+            ).fetchone()
+            if not phase27_migrated:
+                self._migrate_phase27_json(connection)
+                connection.execute(
+                    "INSERT INTO schema_migrations VALUES "
+                    "(6, 'phase 2.7 evidence confidence and ugc semantics', datetime('now'))"
+                )
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_research_evaluations_reviewer
+                ON research_evaluations(research_brief_id, evaluator)
+                """
+            )
+            connection.execute(
+                "INSERT OR IGNORE INTO schema_migrations VALUES "
+                "(7, 'phase 2.7 idempotent human evaluation', datetime('now'))"
             )

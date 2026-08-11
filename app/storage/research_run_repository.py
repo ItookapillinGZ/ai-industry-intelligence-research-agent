@@ -21,17 +21,50 @@ def _ugc_from_json(value: str) -> UGCRelevance:
     except (json.JSONDecodeError, TypeError):
         data = None
     if isinstance(data, dict):
+        areas = [str(item) for item in data.get("affected_areas", [])]
+        directness = str(data.get("directness") or ("indirect" if areas else "none"))
         return UGCRelevance(
             level=str(data.get("level", "low")),
+            directness=directness,
             reason=str(data.get("reason", "")),
-            affected_areas=[str(item) for item in data.get("affected_areas", [])],
+            affected_areas=areas,
         )
     text = str(value or "")
-    level = "high" if text.casefold().startswith("high") else "medium" if text.casefold().startswith("medium") else "low"
-    return UGCRelevance(level=level, reason=text, affected_areas=[])
+    level = (
+        "high" if text.casefold().startswith("high")
+        else "medium" if text.casefold().startswith("medium")
+        else "low"
+    )
+    return UGCRelevance(level=level, directness="none", reason=text, affected_areas=[])
+
+
+def _evidence_from_json(value: str) -> list[EvidenceReference]:
+    items = json.loads(value or "[]")
+    results = []
+    for item in items:
+        normalized = dict(item)
+        if "evidence_text" not in normalized:
+            normalized["evidence_text"] = str(normalized.pop("excerpt", ""))
+            normalized["evidence_type"] = "paraphrase"
+        else:
+            normalized.pop("excerpt", None)
+            normalized.setdefault("evidence_type", "paraphrase")
+        results.append(EvidenceReference(**normalized))
+    return results
 
 
 def brief_from_row(row) -> ResearchBrief:
+    keys = set(row.keys())
+    claim_confidence = (
+        row["claim_confidence"]
+        if "claim_confidence" in keys and row["claim_confidence"] is not None
+        else row["confidence"]
+    )
+    verification_level = (
+        row["verification_level"]
+        if "verification_level" in keys and row["verification_level"]
+        else "single_first_party"
+    )
     return ResearchBrief(
         id=row["id"],
         event_id=row["event_id"],
@@ -43,10 +76,11 @@ def brief_from_row(row) -> ResearchBrief:
         why_it_matters=row["why_it_matters"],
         industry_impact=row["industry_impact"],
         ugc_relevance=_ugc_from_json(row["ugc_relevance"]),
-        evidence=[EvidenceReference(**item) for item in json.loads(row["evidence"] or "[]")],
+        evidence=_evidence_from_json(row["evidence"]),
         sources=[ResearchSource(**item) for item in json.loads(row["sources"] or "[]")],
         uncertainties=json.loads(row["uncertainties"] or "[]"),
-        confidence=float(row["confidence"]),
+        claim_confidence=float(claim_confidence),
+        verification_level=str(verification_level),
         tags=json.loads(row["tags"] or "[]"),
         provider_name=row["provider_name"],
         research_mode=row["research_mode"],
@@ -72,9 +106,10 @@ class ResearchRunRepository:
                     event_id, research_mode, generation_type, evidence_pack_id,
                     headline, executive_summary, what_happened, key_facts,
                     background, why_it_matters, industry_impact, ugc_relevance,
-                    evidence, sources, uncertainties, confidence, tags, provider_name,
-                    model_name, usage, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    evidence, sources, uncertainties, confidence, claim_confidence,
+                    verification_level, tags, provider_name, model_name, usage,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(event_id, research_mode, generation_type) DO UPDATE SET
                     evidence_pack_id = excluded.evidence_pack_id,
                     headline = excluded.headline,
@@ -89,6 +124,8 @@ class ResearchRunRepository:
                     sources = excluded.sources,
                     uncertainties = excluded.uncertainties,
                     confidence = excluded.confidence,
+                    claim_confidence = excluded.claim_confidence,
+                    verification_level = excluded.verification_level,
                     tags = excluded.tags,
                     provider_name = excluded.provider_name,
                     model_name = excluded.model_name,
@@ -118,7 +155,9 @@ class ResearchRunRepository:
                     json.dumps([asdict(item) for item in brief.evidence], ensure_ascii=False),
                     json.dumps([asdict(item) for item in brief.sources], ensure_ascii=False),
                     json.dumps(brief.uncertainties, ensure_ascii=False),
-                    max(0.0, min(1.0, brief.confidence)),
+                    max(0.0, min(1.0, brief.claim_confidence)),
+                    max(0.0, min(1.0, brief.claim_confidence)),
+                    brief.verification_level,
                     json.dumps(brief.tags, ensure_ascii=False),
                     brief.provider_name,
                     brief.model_name,

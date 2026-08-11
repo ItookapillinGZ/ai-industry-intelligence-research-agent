@@ -33,11 +33,11 @@ class EvaluationService:
             )
             if any(item.get(key) is None for key in required):
                 raise ValueError("Ready evaluation entries require a brief id and all five scores")
-                self.repository.save(
             saved.append(
+                self.repository.save(
                     EvaluationResult(
                         research_brief_id=int(item["research_brief_id"]),
-                        evaluator=str(item.get("evaluator", "anonymous")),
+                        evaluator=str(item.get("evaluator", "human/manual")),
                         factuality=int(item["factuality"]),
                         source_coverage=int(item["source_coverage"]),
                         relevance=int(item["relevance"]),
@@ -48,4 +48,3 @@ class EvaluationService:
                 )
             )
         return saved
-

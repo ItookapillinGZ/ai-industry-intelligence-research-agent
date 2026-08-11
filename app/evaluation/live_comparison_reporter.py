@@ -129,7 +129,8 @@ class LiveResearchComparisonReportGenerator:
             "independent_source_coverage": (
                 "sufficient" if independent else "insufficient"
             ),
-            "confidence": brief.confidence,
+            "claim_confidence": brief.claim_confidence,
+            "verification_level": brief.verification_level,
             "uncertainties": brief.uncertainties,
             "human_quality_score": "pending",
             "usage": brief.usage,
@@ -174,10 +175,10 @@ class LiveResearchComparisonReportGenerator:
             lines.append(f"| {label} | {generation_type} | {mode_counts[label]} |")
         lines.extend([
             "",
-            "## Source Coverage and Confidence",
+            "## Source Coverage and Verification",
             "",
-            "| Event | Mode | Provider / model | Total | Official | Independent | Community | Research | Confidence | Uncertainties |",
-            "|---|---|---|---:|---:|---:|---:|---:|---:|---|",
+            "| Event | Mode | Provider / model | Total | Official | Independent | Community | Research | Claim confidence | Verification level | Uncertainties |",
+            "|---|---|---|---:|---:|---:|---:|---:|---:|---|---|",
         ])
         for entry in ordered:
             event = entry["event"]
@@ -214,7 +215,7 @@ class LiveResearchComparisonReportGenerator:
                     f"{brief.provider_name} / {brief.model_name or 'not returned'} | "
                     f"{len(source_urls)} | {len(official)} | {len(independent)} | "
                     f"{len(community)} | {len(research)} | "
-                    f"{brief.confidence:.2f} | {uncertainties} |"
+                    f"{brief.claim_confidence:.2f} | {brief.verification_level} | {uncertainties} |"
                 )
         lines.extend(["", "## Output Comparison", ""])
         for entry in ordered:
@@ -230,7 +231,8 @@ class LiveResearchComparisonReportGenerator:
                 lines.extend([
                     f"- **Status:** {brief.research_mode} / {brief.generation_type}",
                     f"- **Provider/model:** {brief.provider_name} / {brief.model_name or 'not returned'}",
-                    f"- **Confidence:** {brief.confidence:.2f}",
+                    f"- **Claim confidence:** {brief.claim_confidence:.2f}",
+                    f"- **Verification level:** {brief.verification_level}",
                     f"- **Usage:** {_usage_text(brief.usage)}",
                     f"- **Headline:** {_one_line(brief.headline)}",
                     f"- **Executive summary:** {_one_line(brief.executive_summary)}",
@@ -238,8 +240,8 @@ class LiveResearchComparisonReportGenerator:
                     f"- **Why it matters:** {_one_line(brief.why_it_matters)}",
                     f"- **Industry impact:** {_one_line(brief.industry_impact)}",
                     "- **UGC relevance:** "
-                    f"{brief.ugc_relevance.level}; {_one_line(brief.ugc_relevance.reason)}; "
-                    f"areas={brief.ugc_relevance.affected_areas}",
+                    f"{brief.ugc_relevance.level}/{brief.ugc_relevance.directness}; "
+                    f"{_one_line(brief.ugc_relevance.reason)}; areas={brief.ugc_relevance.affected_areas}",
                     "- **Key facts:**",
                 ])
                 for fact in brief.key_facts:

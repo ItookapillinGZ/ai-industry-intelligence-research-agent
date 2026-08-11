@@ -36,7 +36,9 @@ CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
         "diffusion", "creative control", "generated media", "aigc",
     ),
     "AI Product": (
-        "ai product", "new feature", "assistant", "chatbot", "platform", "app", "consumer", "program",
+        "ai product", "new feature", "assistant", "chatbot", "platform", "app", "consumer",
+        "program", "ai tool", "web application", "workspace", "seat", "seats", "subscription",
+        "pricing", "business tier", "usage limit", "product tier",
     ),
     "Enterprise Adoption": (
         "enterprise adoption", "case study", "customer journey", "chatgpt work", "workplace",
@@ -64,7 +66,7 @@ CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
     ),
     "Funding / Business": (
         "funding", "raised", "valuation", "acquisition", "acquires", "merger", "revenue",
-        "earnings", "partnership", "investment", "pricing", "subscription", "business tier", "seats",
+        "earnings", "partnership", "investment", "ipo",
     ),
 }
 
@@ -98,6 +100,35 @@ def classify_text(title: str, content: str) -> tuple[str, list[str]]:
         return "Other", []
     category = max(scores, key=lambda item: (scores[item], CATEGORY_PRIORITY[item]))
     text = f"{title} {content}".casefold()
+    packaging_terms = (
+        "seat", "seats", "subscription", "pricing", "business tier", "usage limit",
+        "product tier", "workspace plan",
+    )
+    finance_terms = (
+        "funding", "raised", "valuation", "acquisition", "acquires", "merger",
+        "earnings", "investment round", "ipo",
+    )
+    if any(_contains_keyword(text, term) for term in packaging_terms) and not any(
+        _contains_keyword(text, term) for term in finance_terms
+    ):
+        category = "AI Product"
+    product_form_terms = ("ai tool", "web application", "assistant", "chatbot", "workspace")
+    model_release_terms = ("model release", "introducing", "new model", "gemini", "gpt-", "claude")
+    if any(_contains_keyword(text, term) for term in product_form_terms) and not any(
+        _contains_keyword(title.casefold(), term) for term in model_release_terms
+    ):
+        category = "AI Product"
+
+    cyber_context_terms = ("evaluation", "security incident", "vulnerability", "defense", "threat")
+    cyber_is_primary = any(
+        _contains_keyword(title.casefold(), term)
+        for term in ("cybersecurity", "security incident", "vulnerability")
+    ) or (
+        _contains_keyword(title.casefold(), "cyber")
+        and any(_contains_keyword(title.casefold(), term) for term in cyber_context_terms)
+    )
+    if scores["Cybersecurity"] > 0 and cyber_is_primary:
+        category = "Cybersecurity"
     tags = [keyword for keyword in CATEGORY_KEYWORDS[category] if _contains_keyword(text, keyword)][:5]
     return category, tags
 

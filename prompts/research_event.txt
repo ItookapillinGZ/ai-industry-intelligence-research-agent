@@ -23,6 +23,7 @@ Return this exact JSON shape:
   "industry_impact": "string",
   "ugc_relevance": {
     "level": "low or medium or high",
+    "directness": "none or indirect or direct",
     "reason": "string",
     "affected_areas": [
       "creator_tools or content_creation or short_video or distribution or community or moderation"
@@ -33,7 +34,8 @@ Return this exact JSON shape:
       "claim": "string",
       "source_id": "src_exact_supplied_id",
       "url": "the exact URL paired with that source_id",
-      "excerpt": "short evidence excerpt or close paraphrase"
+      "evidence_text": "string",
+      "evidence_type": "verbatim_quote or paraphrase"
     }
   ],
   "sources": [
@@ -43,15 +45,27 @@ Return this exact JSON shape:
     }
   ],
   "uncertainties": ["string"],
-  "confidence": 0.0,
+  "claim_confidence": 0.0,
+  "verification_level": "single_first_party or multi_first_party or research_supported or independently_corrob or independently_replicated",
   "tags": ["string"]
 }
+
+Use evidence_type "verbatim_quote" only when evidence_text is copied exactly from the
+supplied item's content or snippet. Do not rewrite, combine, or surround that text with added
+quotation marks. Use "paraphrase" for all summaries or close paraphrases, and do not add
+quotation marks that imply a direct quote.
+
+Verification level describes the kind of support, not the number of URLs. Multiple official
+pages from one organization may support multi_first_party. A research paper may support
+research_supported but is not independent replication. Use independently_corrob only when
+independent media corroborates the event fact. Use independently_replicated only for explicit
+independent technical or benchmark replication.
+
 For multi-source research with no source_type "independent_media", include this exact
 uncertainty item: "independent_source_coverage = insufficient". Never treat official model
 cards, first-party documentation, research papers, or community discussion as independent media.
 
-Confidence must be between 0 and 1. Every source, evidence item, and source_id must refer to
-an exact supplied Evidence Pack item. Do not silently resolve conflicts or convert inference
+Claim confidence must be between 0 and 1. Every source, evidence item, and source_id must refer
+to an exact supplied Evidence Pack item. Do not silently resolve conflicts or convert inference
 into fact. Mention insufficient source coverage in uncertainties when the Evidence Pack marks
 coverage_status as "insufficient".
-

@@ -99,7 +99,8 @@ def test_fake_source_is_rejected(repository: ArticleRepository, tmp_path: Path) 
         "evidence": [],
         "sources": [{"url": "https://fake.example/invented"}],
         "uncertainties": [],
-        "confidence": 0.5,
+        "claim_confidence": 0.5,
+        "verification_level": "single_first_party",
         "tags": [],
     }
     agent = LLMResearchAgent(FakeProvider(json.dumps(payload)), tmp_path)

@@ -111,7 +111,8 @@ class LLMResearchAgent:
                     claim=str(item.get("claim", "")).strip(),
                     article_id=article_id,
                     url=url,
-                    excerpt=str(item.get("excerpt", "")).strip(),
+                    evidence_text=str(item.get("evidence_text", item.get("excerpt", ""))).strip(),
+                    evidence_type=str(item.get("evidence_type", "paraphrase")),
                 )
             )
 
@@ -146,7 +147,8 @@ class LLMResearchAgent:
             evidence=evidence,
             sources=sources,
             uncertainties=[str(item) for item in uncertainties],
-            confidence=confidence,
+            claim_confidence=confidence,
+            verification_level="single_first_party",
             tags=[str(item) for item in tags][:15],
             provider_name=self.provider_name,
         )

@@ -56,7 +56,8 @@ class DeterministicResearchAgent:
                     claim=statement,
                     article_id=article.id,
                     url=article.url,
-                    excerpt=statement,
+                    evidence_text=statement,
+                    evidence_type="paraphrase",
                 )
             )
 
@@ -110,7 +111,8 @@ class DeterministicResearchAgent:
             evidence=evidence,
             sources=sources,
             uncertainties=uncertainties,
-            confidence=round(confidence, 2),
+            claim_confidence=round(confidence, 2),
+            verification_level="single_first_party",
             tags=tags,
             provider_name=self.provider_name,
         )

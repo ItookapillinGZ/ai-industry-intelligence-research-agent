@@ -130,6 +130,7 @@ class EvidencePack:
 @dataclass(slots=True)
 class UGCRelevance:
     level: str
+    directness: str
     reason: str
     affected_areas: list[str] = field(default_factory=list)
 
@@ -161,9 +162,14 @@ class EvidenceReference:
     claim: str
     article_id: int | None
     url: str
-    excerpt: str
-
+    evidence_text: str
+    evidence_type: str
     source_id: str = ""
+
+    @property
+    def excerpt(self) -> str:
+        """Deprecated read-only alias for Phase 2/2.6 callers."""
+        return self.evidence_text
 
 @dataclass(slots=True)
 class ResearchBrief:
@@ -179,7 +185,8 @@ class ResearchBrief:
     evidence: list[EvidenceReference]
     sources: list[ResearchSource]
     uncertainties: list[str]
-    confidence: float
+    claim_confidence: float
+    verification_level: str
     tags: list[str]
     provider_name: str
     research_mode: str = "deterministic"
@@ -190,6 +197,11 @@ class ResearchBrief:
     updated_at: str | None = None
     model_name: str | None = None
     usage: dict[str, int | float] = field(default_factory=dict)
+
+    @property
+    def confidence(self) -> float:
+        """Deprecated compatibility alias for Phase 2/2.6 readers."""
+        return self.claim_confidence
 
 
 @dataclass(slots=True)

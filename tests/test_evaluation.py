@@ -38,7 +38,8 @@ def _brief(repository) -> ResearchBrief:
             evidence=[],
             sources=[],
             uncertainties=["Limited evidence"],
-            confidence=0.5,
+            claim_confidence=0.5,
+            verification_level="single_first_party",
             tags=["LLM"],
             provider_name="test",
         )

@@ -5,7 +5,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from app.services.normalizer import normalize_url
 
-SOURCE_TYPES = ("official", "independent", "community", "research", "other")
+SOURCE_TYPES = ("official", "independent_media", "research", "community", "other")
 
 COMMUNITY_DOMAINS = {
     "discord.com",
@@ -72,7 +72,7 @@ def classify_source_type(
     domain_tokens = set(re.findall(r"[a-z0-9]+", domain))
     if title_tokens & domain_tokens:
         return "official"
-    return "independent" if domain else "other"
+    return "independent_media" if domain else "other"
 
 
 def canonical_search_url(url: str) -> str:

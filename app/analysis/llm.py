@@ -14,6 +14,23 @@ class LLMProviderError(RuntimeError):
     """Raised when an LLM provider request or response fails."""
 
 
+def _http_error_detail(exc: HTTPError) -> str:
+    try:
+        payload = json.loads(exc.read().decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return ""
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if not isinstance(error, dict):
+        return ""
+    fields = []
+    for key in ("message", "type", "param", "code"):
+        value = error.get(key)
+        if value is not None:
+            fields.append(f"{key}={value}")
+    detail = "; ".join(fields)[:1000]
+    return re.sub(r"sk-[A-Za-z0-9_-]+", "[redacted]", detail)
+
+
 class OpenAICompatibleProvider:
     """Minimal Chat Completions client; replaceable through the LLMProvider protocol."""
 
@@ -30,12 +47,14 @@ class OpenAICompatibleProvider:
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
+        self.last_model: str | None = None
+        self.last_usage: dict[str, int | float] = {}
 
     def generate(self, system_prompt: str, user_prompt: str) -> str:
         body = json.dumps(
             {
                 "model": self.model,
-                "temperature": 0.1,
+                "response_format": {"type": "json_object"},
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -55,8 +74,26 @@ class OpenAICompatibleProvider:
         try:
             with urlopen(request, timeout=self.timeout_seconds) as response:
                 payload = json.loads(response.read().decode("utf-8"))
-            return str(payload["choices"][0]["message"]["content"]).strip()
-        except (HTTPError, URLError, TimeoutError, KeyError, IndexError, json.JSONDecodeError) as exc:
+            content = payload["choices"][0]["message"]["content"]
+            if not isinstance(content, str):
+                raise KeyError("choices[0].message.content")
+            self.last_model = str(payload.get("model") or self.model)
+            raw_usage = payload.get("usage")
+            self.last_usage = (
+                {
+                    str(key): value
+                    for key, value in raw_usage.items()
+                    if isinstance(value, (int, float)) and not isinstance(value, bool)
+                }
+                if isinstance(raw_usage, dict)
+                else {}
+            )
+            return content.strip()
+        except HTTPError as exc:
+            detail = _http_error_detail(exc)
+            suffix = f": {detail}" if detail else ""
+            raise LLMProviderError(f"LLM request failed: HTTP {exc.code}{suffix}") from exc
+        except (URLError, TimeoutError, KeyError, IndexError, json.JSONDecodeError) as exc:
             raise LLMProviderError(f"LLM request failed: {exc}") from exc
 
 

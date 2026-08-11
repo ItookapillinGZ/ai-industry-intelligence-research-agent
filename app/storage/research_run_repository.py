@@ -54,6 +54,8 @@ def brief_from_row(row) -> ResearchBrief:
         evidence_pack_id=row["evidence_pack_id"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        model_name=row["model_name"],
+        usage=json.loads(row["usage"] or "{}"),
     )
 
 
@@ -71,8 +73,8 @@ class ResearchRunRepository:
                     headline, executive_summary, what_happened, key_facts,
                     background, why_it_matters, industry_impact, ugc_relevance,
                     evidence, sources, uncertainties, confidence, tags, provider_name,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    model_name, usage, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(event_id, research_mode, generation_type) DO UPDATE SET
                     evidence_pack_id = excluded.evidence_pack_id,
                     headline = excluded.headline,
@@ -89,6 +91,8 @@ class ResearchRunRepository:
                     confidence = excluded.confidence,
                     tags = excluded.tags,
                     provider_name = excluded.provider_name,
+                    model_name = excluded.model_name,
+                    usage = excluded.usage,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -117,6 +121,8 @@ class ResearchRunRepository:
                     max(0.0, min(1.0, brief.confidence)),
                     json.dumps(brief.tags, ensure_ascii=False),
                     brief.provider_name,
+                    brief.model_name,
+                    json.dumps(brief.usage, ensure_ascii=False),
                     brief.created_at or now,
                     now,
                 ),

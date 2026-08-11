@@ -73,7 +73,7 @@ class AuditableEventScorer:
         authority_values = {
             "official": 1.0,
             "research": 1.1,
-            "independent": 0.8,
+            "independent_media": 0.8,
             "community": 0.4,
             "other": 0.3,
         }

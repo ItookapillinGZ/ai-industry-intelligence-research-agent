@@ -188,6 +188,8 @@ class ResearchBrief:
     id: int | None = None
     created_at: str | None = None
     updated_at: str | None = None
+    model_name: str | None = None
+    usage: dict[str, int | float] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

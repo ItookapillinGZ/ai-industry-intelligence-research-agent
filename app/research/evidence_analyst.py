@@ -43,11 +43,11 @@ class PromptLoader:
 
 
 def _json_object(value: str) -> dict:
-    match = re.search(r"\{.*\}", value, flags=re.DOTALL)
-    if not match:
+    text = value.strip()
+    if not text:
         raise ResearchValidationError("Research response does not contain JSON")
     try:
-        result = json.loads(match.group(0))
+        result = json.loads(text)
     except json.JSONDecodeError as exc:
         raise ResearchValidationError(f"Invalid research JSON: {exc}") from exc
     if not isinstance(result, dict):
@@ -231,13 +231,28 @@ class EvidenceBoundLLMAnalyst:
         ).replace("{{EVIDENCE_PACK_JSON}}", json.dumps(asdict(pack), ensure_ascii=False))
         user_prompt = user_prompt.replace("{{ARTICLES_JSON}}", json.dumps(supplied, ensure_ascii=False))
         response = self.provider.generate(self.prompts.load("research_system.txt"), user_prompt)
-        return self._validate(_json_object(response), event, pack)
+        brief = self._validate(_json_object(response), event, pack)
+        brief.model_name = str(
+            getattr(self.provider, "last_model", None)
+            or getattr(self.provider, "model", "")
+        ) or None
+        raw_usage = getattr(self.provider, "last_usage", {})
+        brief.usage = dict(raw_usage) if isinstance(raw_usage, dict) else {}
+        return brief
 
     def _validate(self, data: dict, event: Event, pack: EvidencePack) -> ResearchBrief:
-        allowed = {item.source_id: item for item in pack.items}
-        ids_by_article = {
-            item.article_id: item.source_id for item in pack.items if item.article_id is not None
+        required_fields = {
+            "headline", "executive_summary", "what_happened", "key_facts",
+            "background", "why_it_matters", "industry_impact", "ugc_relevance",
+            "evidence", "sources", "uncertainties", "confidence", "tags",
         }
+        missing = required_fields - set(data)
+        extra = set(data) - required_fields
+        if missing or extra:
+            raise ResearchValidationError(
+                f"Research JSON schema mismatch; missing={sorted(missing)}, extra={sorted(extra)}"
+            )
+        allowed = {item.source_id: item for item in pack.items}
 
         def required_text(key: str) -> str:
             value = data.get(key)
@@ -249,6 +264,7 @@ class EvidenceBoundLLMAnalyst:
         if not isinstance(raw_sources, list) or not raw_sources:
             raise ResearchValidationError("Research sources must be a non-empty list")
         sources = []
+        listed_source_ids: set[str] = set()
         for raw in raw_sources:
             if not isinstance(raw, dict):
                 raise ResearchValidationError("Research sources must be objects")
@@ -256,6 +272,11 @@ class EvidenceBoundLLMAnalyst:
             item = allowed.get(sid)
             if item is None or raw.get("url") != item.url:
                 raise ResearchValidationError("Research response contains an unknown source URL or ID")
+            if set(raw) != {"source_id", "url"}:
+                raise ResearchValidationError("Research sources must match the requested schema")
+            if sid in listed_source_ids:
+                raise ResearchValidationError("Research sources must not contain duplicate source IDs")
+            listed_source_ids.add(sid)
             sources.append(
                 ResearchSource(
                     source_id=sid, article_id=item.article_id, title=item.title,
@@ -263,48 +284,87 @@ class EvidenceBoundLLMAnalyst:
                 )
             )
 
+        raw_evidence = data.get("evidence")
+        if not isinstance(raw_evidence, list) or not raw_evidence:
+            raise ResearchValidationError("evidence must be a non-empty list")
         evidence = []
-        for raw in data.get("evidence", []):
-            if not isinstance(raw, dict):
-                raise ResearchValidationError("Evidence entries must be objects")
+        evidence_source_ids: set[str] = set()
+        for raw in raw_evidence:
+            if not isinstance(raw, dict) or set(raw) != {"claim", "source_id", "url", "excerpt"}:
+                raise ResearchValidationError("Evidence entries must match the requested schema")
             sid = str(raw.get("source_id", ""))
             item = allowed.get(sid)
             if item is None or raw.get("url") != item.url:
                 raise ResearchValidationError("Evidence refers to an unknown source")
+            claim = str(raw.get("claim", "")).strip()
+            excerpt = str(raw.get("excerpt", "")).strip()
+            if not claim or not excerpt:
+                raise ResearchValidationError("Evidence claim and excerpt must be non-empty")
+            if sid not in listed_source_ids:
+                raise ResearchValidationError("Evidence source must also appear in sources")
+            evidence_source_ids.add(sid)
             evidence.append(
                 EvidenceReference(
-                    claim=str(raw.get("claim", "")).strip(), source_id=sid,
+                    claim=claim, source_id=sid,
                     article_id=item.article_id, url=item.url,
-                    excerpt=str(raw.get("excerpt", "")).strip(),
+                    excerpt=excerpt,
                 )
             )
 
         key_facts = data.get("key_facts")
-        if not isinstance(key_facts, list):
-            raise ResearchValidationError("key_facts must be a list")
+        if not isinstance(key_facts, list) or not key_facts:
+            raise ResearchValidationError("key_facts must be a non-empty list")
         for fact in key_facts:
-            if not isinstance(fact, dict) or fact.get("type") not in {"reported_fact", "inference"}:
+            if not isinstance(fact, dict) or set(fact) != {"statement", "type", "source_ids"}:
+                raise ResearchValidationError("Each key fact must match the requested schema")
+            if fact.get("type") not in {"reported_fact", "inference"}:
                 raise ResearchValidationError("Each key fact must distinguish reported_fact or inference")
-            source_ids = fact.get("source_ids")
-            if source_ids is None:
-                source_ids = [ids_by_article.get(int(item), "") for item in fact.get("source_article_ids", [])]
-                fact["source_ids"] = source_ids
-            if any(str(sid) not in allowed for sid in source_ids):
-                raise ResearchValidationError("A key fact refers to an unknown source")
+            if not isinstance(fact.get("statement"), str) or not fact["statement"].strip():
+                raise ResearchValidationError("Each key fact statement must be non-empty")
+            fact_source_ids = fact.get("source_ids")
+            if not isinstance(fact_source_ids, list) or not fact_source_ids:
+                raise ResearchValidationError("Each key fact must cite at least one source ID")
+            if any(str(sid) not in evidence_source_ids for sid in fact_source_ids):
+                raise ResearchValidationError("A key fact must cite a validated evidence source")
 
         raw_ugc = data.get("ugc_relevance")
-        if not isinstance(raw_ugc, dict):
+        if not isinstance(raw_ugc, dict) or set(raw_ugc) != {"level", "reason", "affected_areas"}:
             raise ResearchValidationError("ugc_relevance must be a structured object")
         level = str(raw_ugc.get("level", ""))
-        areas = [str(item) for item in raw_ugc.get("affected_areas", [])]
+        raw_areas = raw_ugc.get("affected_areas")
+        if not isinstance(raw_areas, list) or any(not isinstance(item, str) for item in raw_areas):
+            raise ResearchValidationError("affected_areas must be a list of strings")
+        areas = [item for item in raw_areas]
         if level not in {"low", "medium", "high"} or any(area not in UGC_AREAS for area in areas):
             raise ResearchValidationError("Invalid UGC relevance level or affected area")
         reason = str(raw_ugc.get("reason", "")).strip()
         if not reason:
             raise ResearchValidationError("UGC relevance reason is required")
-        confidence = float(data.get("confidence", -1))
+        raw_confidence = data.get("confidence")
+        if isinstance(raw_confidence, bool) or not isinstance(raw_confidence, (int, float)):
+            raise ResearchValidationError("confidence must be numeric")
+        confidence = float(raw_confidence)
         if not 0 <= confidence <= 1:
             raise ResearchValidationError("confidence must be between 0 and 1")
+        uncertainties = data.get("uncertainties")
+        if not isinstance(uncertainties, list) or any(
+            not isinstance(item, str) or not item.strip() for item in uncertainties
+        ):
+            raise ResearchValidationError("uncertainties must be a list of non-empty strings")
+        if pack.coverage_status == "insufficient" and not uncertainties:
+            raise ResearchValidationError("Insufficient source coverage requires an uncertainty")
+        tags = data.get("tags")
+        has_independent_media = any(
+            item.source_type == "independent_media" for item in pack.items
+        )
+        if pack.mode.startswith("multi_source_llm") and not has_independent_media:
+            marker = "independent_source_coverage = insufficient"
+            if not any(marker in item.casefold() for item in uncertainties):
+                raise ResearchValidationError(
+                    "Multi-source output without independent media must include the coverage marker"
+                )
+        if not isinstance(tags, list) or any(not isinstance(item, str) for item in tags):
+            raise ResearchValidationError("tags must be a list of strings")
 
         return ResearchBrief(
             event_id=event.id, headline=required_text("headline"),
@@ -314,8 +374,8 @@ class EvidenceBoundLLMAnalyst:
             industry_impact=required_text("industry_impact"),
             ugc_relevance=UGCRelevance(level=level, reason=reason, affected_areas=areas),
             evidence=evidence, sources=sources,
-            uncertainties=[str(item) for item in data.get("uncertainties", [])],
-            confidence=confidence, tags=[str(item) for item in data.get("tags", [])][:15],
+            uncertainties=[item.strip() for item in uncertainties],
+            confidence=confidence, tags=[item.strip() for item in tags if item.strip()][:15],
             provider_name=self.provider_name, research_mode=pack.mode,
             generation_type=self.generation_type, evidence_pack_id=pack.id,
         )

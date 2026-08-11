@@ -278,9 +278,9 @@ The research path is now explicit:
 Evidence Gathering uses deterministic queries derived from the event title, tags, and named
 entities. The first implementation uses Bing News RSS and the existing standard-library HTTP
 path. Search failures are logged in the Evidence Pack and do not terminate the pipeline.
-Every candidate keeps its real URL, source name, and source type: official, independent,
-community, research, or other. URLs are normalized and deduplicated before analysis. The
-selection target is one official source plus one or two independent sources; an Evidence Pack
+Every candidate keeps its real URL, source name, and source type: official, independent_media,
+research, community, or other. URLs are normalized and deduplicated before analysis. The
+selection target is one official source plus one or two independent media sources; an Evidence Pack
 records insufficient coverage when this is not achieved.
 
 Research runs are stored separately by research_mode (deterministic, single_source_llm, or

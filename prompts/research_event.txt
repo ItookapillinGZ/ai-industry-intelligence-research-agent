@@ -46,6 +46,9 @@ Return this exact JSON shape:
   "confidence": 0.0,
   "tags": ["string"]
 }
+For multi-source research with no source_type "independent_media", include this exact
+uncertainty item: "independent_source_coverage = insufficient". Never treat official model
+cards, first-party documentation, research papers, or community discussion as independent media.
 
 Confidence must be between 0 and 1. Every source, evidence item, and source_id must refer to
 an exact supplied Evidence Pack item. Do not silently resolve conflicts or convert inference

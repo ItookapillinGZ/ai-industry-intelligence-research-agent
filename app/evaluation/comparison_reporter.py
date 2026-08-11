@@ -85,14 +85,14 @@ class ResearchComparisonReportGenerator:
                 continue
             avg_sources = sum(len(brief.sources) for brief in briefs) / len(briefs)
             independent = [
-                len({source.url for source in brief.sources if source.source_type == "independent"})
+                len({source.url for source in brief.sources if source.source_type == "independent_media"})
                 for brief in briefs
             ]
             both = sum(
                 1
                 for brief in briefs
                 if any(source.source_type == "official" for source in brief.sources)
-                and any(source.source_type == "independent" for source in brief.sources)
+                and any(source.source_type == "independent_media" for source in brief.sources)
             )
             lines.append(
                 f"| {mode} | {avg_sources:.2f} | {sum(independent) / len(briefs):.2f} | {both} |"

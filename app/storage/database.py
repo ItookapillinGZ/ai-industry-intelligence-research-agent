@@ -179,6 +179,8 @@ class Database:
                     confidence REAL NOT NULL,
                     tags TEXT NOT NULL DEFAULT '[]',
                     provider_name TEXT NOT NULL,
+                    model_name TEXT,
+                    usage TEXT NOT NULL DEFAULT '{}',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     UNIQUE(event_id, research_mode, generation_type)
@@ -218,6 +220,18 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_research_evaluations_brief
                     ON research_evaluations(research_brief_id);
                 """
+            )
+            self._ensure_column(
+                connection,
+                "research_brief_runs",
+                "model_name",
+                "TEXT",
+            )
+            self._ensure_column(
+                connection,
+                "research_brief_runs",
+                "usage",
+                "TEXT NOT NULL DEFAULT '{}'",
             )
             connection.execute(
                 "INSERT OR IGNORE INTO schema_migrations VALUES (1, 'phase 1 base schema', datetime('now'))"
@@ -273,4 +287,34 @@ class Database:
             )
             connection.execute(
                 "INSERT OR IGNORE INTO schema_migrations VALUES (3, 'phase 2.5 research quality validation', datetime('now'))"
+            )
+            connection.execute(
+                "INSERT OR IGNORE INTO schema_migrations VALUES (4, 'phase 2.6 live research metadata', datetime('now'))"
+            )
+            connection.execute(
+                """
+                UPDATE evidence_packs
+                SET items = REPLACE(
+                    items,
+                    '"source_type": "independent"',
+                    '"source_type": "independent_media"'
+                )
+                WHERE items LIKE '%"source_type": "independent"%'
+                """
+            )
+            for table in ("research_briefs", "research_brief_runs"):
+                connection.execute(
+                    f"""
+                    UPDATE {table}
+                    SET sources = REPLACE(
+                        sources,
+                        '"source_type": "independent"',
+                        '"source_type": "independent_media"'
+                    )
+                    WHERE sources LIKE '%"source_type": "independent"%'
+                    """
+                )
+            connection.execute(
+                "INSERT OR IGNORE INTO schema_migrations VALUES "
+                "(5, 'strict evidence source taxonomy', datetime('now'))"
             )

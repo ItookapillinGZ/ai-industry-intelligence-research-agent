@@ -1,0 +1,95 @@
+{
+  "phase": "2.6 Live LLM Research Validation",
+  "status": "completed",
+  "phase_3_entered": false,
+  "limits": {"max_successful_model_generations": 11, "max_api_requests": 12},
+  "run_statistics": {
+    "api_requests": 12,
+    "successful_model_generations": 11,
+    "failed_api_requests": 1,
+    "valid_live_research_briefs": 10,
+    "invalid_live_smoke_outputs": 1,
+    "fallbacks_during_phase26_live_calls": 1
+  },
+  "provider": {
+    "provider_name": "openai-compatible",
+    "actual_model": "gpt-5.6-terra",
+    "provider_returned_token_usage": true,
+    "provider_returned_cost": false
+  },
+  "failed_request_record": {
+    "status": "HTTP 400",
+    "counted_as_api_request": true,
+    "counted_as_successful_generation": false,
+    "sanitized_cause": "Initial Chat Completions request configuration was rejected; the request was corrected by omitting temperature and using response_format=json_object.",
+    "credentials_recorded": false
+  },
+  "phase26_fallback_record": {
+    "event_id": 80,
+    "research_brief_id": 21,
+    "research_mode": "single_source_llm",
+    "generation_type": "fallback",
+    "provider": "local-research-fallback",
+    "trigger": "Initial live request failed with HTTP 400",
+    "excluded_from_valid_live_results": true
+  },
+  "invalid_smoke_record": {
+    "event_id": 80,
+    "research_brief_id": 84,
+    "evidence_pack_id": 11,
+    "generation_type": "invalid_live_smoke",
+    "provider": "openai-compatible",
+    "model": "gpt-5.6-terra",
+    "reason_excluded": "The output used only the original seed source, so multi-source evidence use was not demonstrated.",
+    "source_count": 1,
+    "usage": {"prompt_tokens": 2882, "completion_tokens": 1424, "total_tokens": 4306}
+  },
+  "valid_live_results": [
+    {
+      "event_id": 80,
+      "single_source_brief_id": 82,
+      "multi_source_brief_id": 83,
+      "multi_source_coverage": {"total": 3, "official": 3, "independent_media": 0, "research": 0, "community": 0, "independent_source_coverage": "insufficient"}
+    },
+    {
+      "event_id": 86,
+      "single_source_brief_id": 86,
+      "multi_source_brief_id": 90,
+      "multi_source_coverage": {"total": 2, "official": 2, "independent_media": 0, "research": 0, "community": 0, "independent_source_coverage": "insufficient"}
+    },
+    {
+      "event_id": 83,
+      "single_source_brief_id": 87,
+      "multi_source_brief_id": 91,
+      "multi_source_coverage": {"total": 2, "official": 1, "independent_media": 0, "research": 1, "community": 0, "independent_source_coverage": "insufficient"}
+    },
+    {
+      "event_id": 131,
+      "single_source_brief_id": 88,
+      "multi_source_brief_id": 92,
+      "multi_source_coverage": {"total": 2, "official": 1, "independent_media": 1, "research": 0, "community": 0, "independent_source_coverage": "sufficient"}
+    },
+    {
+      "event_id": 152,
+      "single_source_brief_id": 89,
+      "multi_source_brief_id": 93,
+      "multi_source_coverage": {"total": 2, "official": 1, "independent_media": 1, "research": 0, "community": 0, "independent_source_coverage": "sufficient"}
+    }
+  ],
+  "usage": {
+    "ten_valid_live_results": {"prompt_tokens": 36404, "completion_tokens": 16152, "total_tokens": 52556, "estimated_cost_usd": 0.266632},
+    "all_eleven_successful_generations_including_invalid_smoke": {"prompt_tokens": 39286, "completion_tokens": 17576, "total_tokens": 56862, "estimated_cost_usd": 0.289484},
+    "cost_estimation_basis": "USD 2.00 per million input tokens and USD 12.00 per million output tokens; the provider did not return billed cost.",
+    "failed_http_400_usage": "not returned"
+  },
+  "historical_fallbacks_excluded_from_live_results": {"single_source_llm": 12, "multi_source_llm": 12},
+  "human_quality_scores": "pending",
+  "artifacts": {
+    "single_source_report": "reports/research_single_source_llm_live_20260811_102136.md",
+    "multi_source_report": "reports/research_multi_source_llm_live_20260811_102136.md",
+    "comparison_report": "reports/live_research_comparison_20260811_102136.md",
+    "comparison_dataset": "reports/live_research_comparison_20260811_102136.json",
+    "human_review_template": "evaluation/research_quality_template_20260811_102136.json"
+  },
+  "credentials_recorded": false
+}

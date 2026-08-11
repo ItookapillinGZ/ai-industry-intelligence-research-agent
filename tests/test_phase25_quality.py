@@ -147,7 +147,7 @@ def test_evidence_gathering_deduplicates_and_records_coverage() -> None:
     pack = SearchEvidenceGatherer(StaticSearch()).gather(event, [seed])
     assert len({item.url for item in pack.items}) == len(pack.items)
     assert any(item.source_type == "official" for item in pack.items)
-    assert sum(item.source_type == "independent" for item in pack.items) >= 1
+    assert sum(item.source_type == "independent_media" for item in pack.items) >= 1
     assert pack.coverage_status == "sufficient"
     assert all(item.url.startswith("https://") for item in pack.items)
 

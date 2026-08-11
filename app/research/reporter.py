@@ -25,7 +25,11 @@ class ResearchReportGenerator:
         items = self.repository.list_with_events(limit, research_mode, generation_type)
         now = datetime.now(timezone.utc)
         self.reports_dir.mkdir(parents=True, exist_ok=True)
-        path = self.reports_dir / f"research_{now.strftime('%Y%m%d_%H%M%S')}.md"
+        mode_label = research_mode or "all_modes"
+        generation_label = f"_{generation_type}" if generation_type else ""
+        path = self.reports_dir / (
+            f"research_{mode_label}{generation_label}_{now.strftime('%Y%m%d_%H%M%S')}.md"
+        )
         lines = [
             "# AI Industry Intelligence Report",
             "",
@@ -59,6 +63,8 @@ class ResearchReportGenerator:
             f"- **Importance:** {importance:.2f}/10",
             f"- **Confidence:** {brief.confidence:.2f}",
             f"- **Research mode:** {brief.research_mode} ({brief.generation_type})",
+            f"- **Provider:** {brief.provider_name}",
+            f"- **Model:** {brief.model_name or 'not returned'}",
             f"- **Category:** {category}",
             "",
             "#### What happened",
@@ -99,6 +105,12 @@ class ResearchReportGenerator:
             ]
         )
         lines.extend(f"- {item}" for item in brief.uncertainties)
+        lines.extend(["", "#### Evidence references", ""])
+        for item in brief.evidence:
+            lines.append(
+                f"- **{item.source_id}:** {_clean(item.claim)} -- "
+                f"[source]({item.url}); excerpt: {_clean(item.excerpt)}"
+            )
         lines.extend(["", "#### Sources", ""])
         for source in brief.sources:
             lines.append(f"- [{_clean(source.title)}]({source.url}) — {source.source}")

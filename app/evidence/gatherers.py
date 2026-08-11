@@ -53,11 +53,11 @@ def _is_relevant_candidate(event_title: str, candidate_title: str) -> bool:
 
 def _coverage(items: list[EvidenceItem]) -> tuple[str, str]:
     official = len({item.url for item in items if item.source_type == "official"})
-    independent = len({item.url for item in items if item.source_type == "independent"})
-    status = "sufficient" if official >= 1 and independent >= 1 else "insufficient"
+    independent_media = len({item.url for item in items if item.source_type == "independent_media"})
+    status = "sufficient" if official >= 1 and independent_media >= 1 else "insufficient"
     note = (
-        f"official={official}, independent={independent}; "
-        "target is at least 1 official and 1-2 independent sources."
+        f"official={official}, independent_media={independent_media}; "
+        "target is at least 1 official and 1-2 independent media sources."
     )
     return status, note
 
@@ -209,14 +209,14 @@ class SearchEvidenceGatherer:
         ranked = sorted(
             candidates,
             key=lambda item: (
-                {"official": 0, "independent": 1, "research": 2, "community": 3, "other": 4}[
+                {"official": 0, "independent_media": 1, "research": 2, "community": 3, "other": 4}[
                     item.source_type
                 ],
                 item.source,
                 item.title,
             ),
         )
-        caps = {"official": 1, "independent": 2, "research": 1, "community": 1, "other": 1}
+        caps = {"official": 1, "independent_media": 2, "research": 1, "community": 1, "other": 1}
         counts = {
             source_type: sum(item.source_type == source_type for item in seeds)
             for source_type in caps

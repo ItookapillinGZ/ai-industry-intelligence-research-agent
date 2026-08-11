@@ -1,0 +1,15 @@
+{
+  "evaluations": [
+    {
+      "research_brief_id": 1,
+      "evaluator": "your-name",
+      "factuality": 3,
+      "source_coverage": 3,
+      "relevance": 3,
+      "insightfulness": 3,
+      "clarity": 3,
+      "notes": "Replace the brief id and scores after manually reviewing a real event."
+    }
+  ]
+}
+

@@ -1,0 +1,98 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+
+from app.models import ResearchBrief
+from app.storage.research_repository import ResearchRepository
+
+
+def _clean(value: str) -> str:
+    return value.replace("\n", " ").strip()
+
+
+class ResearchReportGenerator:
+    def __init__(self, repository: ResearchRepository, reports_dir: Path) -> None:
+        self.repository = repository
+        self.reports_dir = reports_dir
+
+    def generate(self, limit: int) -> Path:
+        items = self.repository.list_with_events(limit)
+        now = datetime.now(timezone.utc)
+        self.reports_dir.mkdir(parents=True, exist_ok=True)
+        path = self.reports_dir / f"research_{now.strftime('%Y%m%d_%H%M%S')}.md"
+        lines = [
+            "# AI Industry Intelligence Report",
+            "",
+            f"- Generated at: {now.replace(microsecond=0).isoformat()}",
+            f"- Researched events: {len(items)}",
+            "",
+            "## Executive Summary",
+            "",
+        ]
+        if not items:
+            lines.extend(["_No ResearchBrief records are available._", ""])
+        else:
+            for index, (_event, brief) in enumerate(items, 1):
+                lines.append(f"{index}. **{_clean(brief.headline)}** — {_clean(brief.executive_summary)}")
+            lines.extend(["", "## Top Events", ""])
+            for index, (event, brief) in enumerate(items, 1):
+                lines.extend(self._render_event(index, event.importance_score, event.category, brief))
+        path.write_text("\n".join(lines), encoding="utf-8")
+        return path
+
+    def _render_event(
+        self,
+        index: int,
+        importance: float,
+        category: str,
+        brief: ResearchBrief,
+    ) -> list[str]:
+        lines = [
+            f"### {index}. {_clean(brief.headline)}",
+            "",
+            f"- **Importance:** {importance:.2f}/10",
+            f"- **Confidence:** {brief.confidence:.2f}",
+            f"- **Category:** {category}",
+            "",
+            "#### What happened",
+            "",
+            brief.what_happened,
+            "",
+            "#### Key facts",
+            "",
+        ]
+        for fact in brief.key_facts:
+            kind = fact.get("type", "reported_fact")
+            source_ids = ", ".join(str(item) for item in fact.get("source_article_ids", []))
+            lines.append(f"- **{kind}:** {fact.get('statement', '')} _(articles: {source_ids or '—'})_")
+        lines.extend(
+            [
+                "",
+                "#### Background",
+                "",
+                brief.background,
+                "",
+                "#### Why it matters",
+                "",
+                brief.why_it_matters,
+                "",
+                "#### Industry impact",
+                "",
+                brief.industry_impact,
+                "",
+                "#### UGC relevance",
+                "",
+                brief.ugc_relevance,
+                "",
+                "#### Uncertainties",
+                "",
+            ]
+        )
+        lines.extend(f"- {item}" for item in brief.uncertainties)
+        lines.extend(["", "#### Sources", ""])
+        for source in brief.sources:
+            lines.append(f"- [{_clean(source.title)}]({source.url}) — {source.source}")
+        lines.append("")
+        return lines
+

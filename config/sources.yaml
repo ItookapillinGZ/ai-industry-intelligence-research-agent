@@ -7,6 +7,15 @@ app:
   dedup_lookback_days: 30
   processing_batch_size: 50
   report_max_articles: 100
+  content_timeout_seconds: 20
+  content_min_length: 200
+  content_max_bytes: 5000000
+  content_batch_size: 20
+  event_time_window_days: 7
+  event_similarity_threshold: 0.62
+  event_batch_size: 500
+  research_top_k: 10
+  prompts_dir: prompts
 
 sources:
   - name: OpenAI News

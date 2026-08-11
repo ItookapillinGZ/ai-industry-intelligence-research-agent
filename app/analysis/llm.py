@@ -48,7 +48,7 @@ class OpenAICompatibleProvider:
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
-                "User-Agent": "AI-Industry-Intelligence-Research-Agent/0.1",
+                "User-Agent": "AI-Industry-Intelligence-Research-Agent/0.2",
             },
         )
         try:
@@ -60,7 +60,7 @@ class OpenAICompatibleProvider:
 
 
 def _article_prompt(article: StoredArticle) -> str:
-    content = article.raw_text[:8000]
+    content = (article.content or article.raw_text)[:12000]
     return f"Title: {article.title}\nSource: {article.source}\nContent:\n{content}"
 
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-industry-intelligence-research-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "An extensible research workflow for AI industry intelligence."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,6 +12,7 @@ dependencies = [
   "feedparser>=6.0.11,<7",
   "python-dotenv>=1.0.1,<2",
   "PyYAML>=6.0.2,<7",
+  "trafilatura>=2.1,<3",
 ]
 
 [project.optional-dependencies]

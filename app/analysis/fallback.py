@@ -13,8 +13,12 @@ CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
 }
 
 
+def _analysis_content(article: StoredArticle) -> str:
+    return article.content or article.raw_text
+
+
 def _article_text(article: StoredArticle) -> str:
-    return f"{article.title} {article.raw_text}".casefold()
+    return f"{article.title} {_analysis_content(article)}".casefold()
 
 
 class KeywordClassifier:
@@ -49,7 +53,7 @@ class RuleBasedImportanceScorer:
         text = _article_text(article)
         score = 4.0
         score += min(3.0, sum(0.6 for term in self.HIGH_SIGNAL_TERMS if term in text))
-        if article.raw_text and len(article.raw_text) >= 500:
+        if len(_analysis_content(article)) >= 500:
             score += 0.5
         if classification.category != "Other":
             score += 0.5
@@ -61,12 +65,13 @@ class ExtractiveSummarizer:
         self.max_length = max_length
 
     def summarize(self, article: StoredArticle) -> str:
-        text = re.sub(r"\s+", " ", article.raw_text).strip()
+        text = re.sub(r"\s+", " ", _analysis_content(article)).strip()
         if not text:
             return article.title
         sentences = re.split(r"(?<=[.!?。！？])\s+", text)
         summary = " ".join(sentences[:2]).strip()
         if len(summary) <= self.max_length:
             return summary
-        return summary[: self.max_length - 1].rsplit(" ", 1)[0].rstrip() + "…"
+        shortened = summary[: self.max_length - 1].rsplit(" ", 1)[0].rstrip()
+        return (shortened or summary[: self.max_length - 1]).rstrip() + "…"
 

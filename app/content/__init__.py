@@ -1,0 +1,2 @@
+"""Full-text extraction components."""
+

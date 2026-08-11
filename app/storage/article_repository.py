@@ -8,7 +8,8 @@ from app.models import ClassificationResult, NormalizedArticle, StoredArticle, u
 from app.storage.database import Database
 
 
-def _from_row(row: Row) -> StoredArticle:
+def article_from_row(row: Row) -> StoredArticle:
+    keys = set(row.keys())
     return StoredArticle(
         id=row["id"],
         title=row["title"],
@@ -26,6 +27,11 @@ def _from_row(row: Row) -> StoredArticle:
         normalized_title=row["normalized_title"],
         processing_status=row["processing_status"],
         llm_provider=row["llm_provider"],
+        content=row["content"] if "content" in keys else None,
+        content_status=row["content_status"] if "content_status" in keys else "pending",
+        content_length=row["content_length"] if "content_length" in keys else 0,
+        content_fetched_at=row["content_fetched_at"] if "content_fetched_at" in keys else None,
+        content_error=row["content_error"] if "content_error" in keys else None,
     )
 
 
@@ -80,20 +86,20 @@ class ArticleRepository:
         cached = self._recent_title_caches.get(lookback_days)
         if cached is not None:
             return cached
-
         cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).isoformat()
         with self.database.connect() as connection:
             rows = connection.execute(
-                """
-                SELECT id, title, normalized_title
-                FROM articles
-                WHERE collected_at >= ?
-                """,
+                "SELECT id, title, normalized_title FROM articles WHERE collected_at >= ?",
                 (cutoff,),
             ).fetchall()
         titles = [(row["id"], row["title"], row["normalized_title"]) for row in rows]
         self._recent_title_caches[lookback_days] = titles
         return titles
+
+    def get(self, article_id: int) -> StoredArticle | None:
+        with self.database.connect() as connection:
+            row = connection.execute("SELECT * FROM articles WHERE id = ?", (article_id,)).fetchone()
+        return article_from_row(row) if row else None
 
     def list_pending(self, limit: int, include_failed: bool = False) -> list[StoredArticle]:
         statuses = ("pending", "failed") if include_failed else ("pending",)
@@ -108,7 +114,46 @@ class ArticleRepository:
                 """,
                 (*statuses, limit),
             ).fetchall()
-        return [_from_row(row) for row in rows]
+        return [article_from_row(row) for row in rows]
+
+    def list_for_content_fetch(self, limit: int, include_failed: bool = False) -> list[StoredArticle]:
+        statuses = ("pending", "failed") if include_failed else ("pending",)
+        placeholders = ",".join("?" for _ in statuses)
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT * FROM articles
+                WHERE content_status IN ({placeholders})
+                ORDER BY COALESCE(published_at, collected_at) DESC
+                LIMIT ?
+                """,
+                (*statuses, limit),
+            ).fetchall()
+        return [article_from_row(row) for row in rows]
+
+    def update_content_success(self, article_id: int, content: str) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                """
+                UPDATE articles
+                SET content = ?, content_status = 'fetched', content_length = ?,
+                    content_fetched_at = ?, content_error = NULL, updated_at = ?
+                WHERE id = ?
+                """,
+                (content, len(content), utc_now_iso(), utc_now_iso(), article_id),
+            )
+
+    def update_content_failure(self, article_id: int, error: str) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                """
+                UPDATE articles
+                SET content_status = 'failed', content_error = ?,
+                    content_fetched_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (error[:1000], utc_now_iso(), utc_now_iso(), article_id),
+            )
 
     def update_analysis(
         self,
@@ -141,11 +186,7 @@ class ArticleRepository:
     def mark_failed(self, article_id: int) -> None:
         with self.database.connect() as connection:
             connection.execute(
-                """
-                UPDATE articles
-                SET processing_status = 'failed', updated_at = ?
-                WHERE id = ?
-                """,
+                "UPDATE articles SET processing_status = 'failed', updated_at = ? WHERE id = ?",
                 (utc_now_iso(), article_id),
             )
 
@@ -160,7 +201,7 @@ class ArticleRepository:
                 """,
                 (limit,),
             ).fetchall()
-        return [_from_row(row) for row in rows]
+        return [article_from_row(row) for row in rows]
 
     def count(self) -> int:
         with self.database.connect() as connection:

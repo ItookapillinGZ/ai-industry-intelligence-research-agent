@@ -1,85 +1,132 @@
 # AI Industry Intelligence Research Agent
 
-一个面向求职作品集、可持续演进的 AI 行业情报研究工作流。它追踪 AI Agent、AI Coding、LLM、AIGC 与 AI 产品动态，将分散的信息源转化为可查询的结构化数据和 Markdown 研究报告。
+一个面向求职作品集、可持续演进的 AI 行业情报研究工作流。它持续追踪 AI Agent、AI Coding、LLM、AIGC 与 AI 产品动态，把分散文章转化为结构化事件、证据约束的 ResearchBrief 和 Markdown 情报报告。
 
-当前仓库只实现 **Phase 1：MVP 基础架构**。它不是 Dashboard，也不是一个仅拼接新闻标题的摘要器；重点是建立清晰、可运行、可测试、方便后续接入更多 Collector 和 LLM/Agent 能力的工程基础。
+当前仓库完成 **Phase 2：Research Workflow**。它没有 Dashboard，也没有为了“Agent”标签引入 LangChain、LangGraph、Vector DB、Redis、Celery 或微服务。
 
-## MVP Pipeline
+## Pipeline
 
 ```text
-Source → Collector → Normalize → Deduplicate → Classify → Score → Summarize → Markdown Report
+Source
+  → Collector
+  → Normalize
+  → Deduplicate
+  → Full Text Extraction
+  → Classify / Score
+  → Event Grouping
+  → Top-K Event Selection
+  → Research Agent
+  → ResearchBrief
+  → Markdown Intelligence Report
 ```
 
-各阶段职责彼此分离：
-
-- **Source**：在 `config/sources.yaml` 中声明 RSS 信息源，不在业务代码中硬编码。
-- **Collector**：读取通用 RSS/Atom feed，并映射为统一文章模型。
-- **Normalize**：规范 URL、标题、时间、正文和标签。
-- **Deduplicate**：先检查规范化 URL 唯一性，再对近期文章做标题相似度匹配。
-- **Classify / Score / Summarize**：通过独立协议执行，LLM provider 可替换。
-- **Report**：读取已处理文章，按重要度和类别生成 Markdown 报告。
+Phase 1 的 article-level pipeline 与报告仍然保留，可以独立使用。
 
 ## Architecture
 
 ```text
-CLI (app/cli.py)
-  ├── CollectionPipeline
-  │     ├── Collector protocol → RSSCollector
-  │     ├── Normalizer
-  │     ├── Deduplicator
-  │     └── ArticleRepository → SQLite
-  ├── ArticleProcessor
-  │     ├── Classifier protocol
-  │     ├── ImportanceScorer protocol
-  │     ├── Summarizer protocol
-  │     └── LLMProvider protocol / local fallback
-  └── MarkdownReporter
+CLI
+ ├── CollectionPipeline
+ │    ├── Collector protocol → RSSCollector
+ │    ├── Normalizer / URL + title deduplication
+ │    └── ArticleRepository → SQLite
+ ├── ContentExtractionService
+ │    └── ContentExtractor protocol → TrafilaturaContentExtractor
+ ├── ArticleProcessor
+ │    ├── Classifier protocol
+ │    ├── ImportanceScorer protocol
+ │    └── Summarizer protocol
+ ├── EventGroupingService
+ │    └── EventGrouper protocol → conservative deterministic grouping
+ ├── EventRankingService
+ │    └── EventScorer protocol → source diversity + recency + article score
+ ├── ResearchService
+ │    └── ResearchAgent protocol
+ │         ├── structured LLM implementation
+ │         └── deterministic no-key fallback
+ ├── ResearchReportGenerator
+ └── EvaluationService / EvaluationReportGenerator
 ```
 
 主要目录：
 
 ```text
 app/
-  collectors/        # 可扩展外部数据采集接口与 RSS 实现
-  storage/           # SQLite 初始化和 Article Repository
-  services/          # normalize、deduplicate、pipeline、process、report
-  analysis/          # 分类/评分/摘要协议、LLM provider、本地 fallback
-  cli.py             # 命令行入口
-config/sources.yaml  # RSS 信息源与运行参数
-data/                # SQLite 数据库（运行时生成）
-reports/             # Markdown 报告（运行时生成）
-logs/                # 滚动日志（运行时生成）
-tests/               # 单元和集成级基础测试
+  collectors/      # RSS/Atom 和未来外部数据源接口
+  content/         # HTTP fetch、正文提取接口与 Trafilatura 实现
+  analysis/        # article 分类、评分、摘要和 LLM provider
+  events/          # Event grouping 与 Top-K ranking
+  research/        # Research Agent、校验、fallback、报告
+  evaluation/      # 人工评测导入与 Markdown summary
+  storage/         # SQLite、迁移和 repositories
+  services/        # Phase 1 collection/processing/report services
+prompts/           # 与 Python 业务逻辑分离的研究 prompts
+evaluation/        # 人工评分 JSON 模板
+config/            # 来源和 pipeline 参数
+tests/             # 单元与集成测试
 ```
 
-这种划分允许后续新增 API、网页或数据库 Collector，或将任意分析组件换成不同的模型服务，而无需重写采集与存储流程。
+## Data Model and Migration
 
-## Data Model
+`Database.initialize()` 使用幂等、向后兼容的增量迁移。现有 Phase 1 SQLite 会原地增加字段和表，不删除文章数据。
 
-SQLite `articles` 表包含：
+### Articles
 
-- `title`
-- `url` / `normalized_url`
-- `source`
-- `author`
-- `published_at`
-- `collected_at`
-- `raw_text`
-- `summary`
-- `category`
-- `importance_score`（0–10）
-- `tags`（JSON array）
-- `normalized_title`
-- `processing_status`
-- `llm_provider`
-- 创建与更新时间
+Phase 1 字段全部保留，并新增：
 
-`normalized_url` 有数据库唯一约束，即使并发或上层检查遗漏，也不会写入重复 URL。
+- `content`：提取的网页正文
+- `content_status`：`pending` / `fetched` / `failed`
+- `content_length`
+- `content_fetched_at`
+- `content_error`
 
-## Requirements and Installation
+RSS 的 `raw_text` 永不被正文提取覆盖。成功提取的文章默认不会重复下载。
 
-- Python 3.11+（已在 Python 3.13 上验证）
-- 网络连接（仅采集在线 RSS 或调用 LLM 时需要）
+### Events
+
+`events` 保存：
+
+- `id`、`title`、`normalized_title`、`category`
+- `created_at`、`updated_at`
+- `importance_score`
+- `article_count`、`source_count`
+
+`event_articles.article_id` 有唯一约束，因此一篇文章最多归属一个 Event。
+
+### ResearchBrief
+
+`research_briefs` 结构化保存：
+
+- `headline`
+- `executive_summary`
+- `what_happened`
+- `key_facts`，每条区分 `reported_fact` 与 `inference`
+- `background`
+- `why_it_matters`
+- `industry_impact`
+- `ugc_relevance`
+- `evidence`
+- `sources`
+- `uncertainties`
+- `confidence`（0–1）
+- `tags`、`provider_name`
+
+模型返回的每个 source URL、evidence URL 和 article ID 都必须来自输入文章，否则整个 LLM brief 被拒绝并回退到本地实现。
+
+### Evaluations
+
+`evaluations` 保存五个 1–5 人工评分：
+
+- `factuality`
+- `source_coverage`
+- `relevance`
+- `insightfulness`
+- `clarity`
+
+## Installation
+
+- Python 3.11+
+- 网络仅用于 RSS、正文下载和可选 LLM 调用
 
 PowerShell：
 
@@ -99,57 +146,91 @@ python -m pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-不创建 `.env` 也可以运行。`.gitignore` 已排除 `.env`、数据库、日志和生成的报告。
+不创建 `.env` 也可以运行。数据库、日志、真实 `.env` 和生成报告均被 `.gitignore` 排除。
 
-## Usage
+## CLI Usage
 
-分阶段执行：
+### Phase 1 commands
 
 ```bash
 python -m app collect
 python -m app process
 python -m app report
-```
-
-也可以执行完整 MVP：
-
-```bash
 python -m app run
 ```
 
-常用选项：
+### Full-text extraction
 
 ```bash
-python -m app --log-level DEBUG collect
-python -m app process --limit 20
-python -m app process --retry-failed
-python -m app report --limit 50
-python -m app --config path/to/sources.yaml collect
+python -m app fetch-content
+python -m app fetch-content --limit 20
+python -m app fetch-content --limit 20 --retry-failed
 ```
 
-注意：全局选项 `--config` 和 `--log-level` 放在子命令前。
+单篇 403、404、超时、非 HTML、页面过大或正文解析失败只影响该文章。失败原因保存在 `content_error`。
 
-## Source Configuration
+### Event grouping and Top-K
 
-编辑 `config/sources.yaml` 即可新增、停用或标记 RSS 信息源：
-
-```yaml
-sources:
-  - name: Example AI Lab
-    url: https://example.com/feed.xml
-    enabled: true
-    tags: [Research, Example]
+```bash
+python -m app events
+python -m app events --limit 500 --top 10
 ```
 
-单个源失败只会记入日志，不会中止其他源。默认配置是示例起点，生产使用前应根据覆盖范围、稳定性、授权和内容质量进行维护。
+第一版 grouping 有意保守：
+
+- 只在配置的时间窗口内比较；
+- 非兼容 category 不合并；
+- 需要足够的标题词元重叠与相似度；
+- 同一来源的不同文章默认不聚类，避免把模板系列误当成同一事件；
+- 没有足够证据时创建独立 Event。
+
+Event score 综合最高 article importance、独立来源数量、recency 和 category。没有 API key 也能稳定运行。
+
+### Research Agent
+
+```bash
+python -m app research --top 10
+python -m app research --top 10 --force
+python -m app research-report --top 10
+```
+
+默认无 key 时使用 deterministic fallback。它会：
+
+- 只引用 linked articles 的真实 URL；
+- 把抽取内容、文章摘要或 RSS 文本转为可追踪 evidence；
+- 明确记录单来源、正文缺失等 uncertainty；
+- 对无明显 UGC 关系的事件输出 `low relevance / limited direct impact`；
+- 对单来源且无完整正文的 brief 使用保守 confidence。
+
+研究 prompts 位于：
+
+```text
+prompts/research_system.txt
+prompts/research_event.txt
+```
+
+大型 prompt 不在 Python service 中硬编码。
+
+### Human evaluation
+
+复制并编辑 `evaluation/evaluation_template.json`，将 `research_brief_id` 改为真实 ID，然后执行：
+
+```bash
+python -m app evaluate --input evaluation/evaluation_template.json
+```
+
+评分会写入 SQLite，并在 `reports/` 生成逐维度 Markdown summary。该轻量框架适合后续人工评测 10–20 个真实事件。
 
 ## LLM Provider and Graceful Degradation
 
-默认 `AI_INTEL_LLM_PROVIDER=disabled`。此时：
+默认配置：
 
-- RSS 采集、存储、URL 去重和标题去重完整运行；
-- `process` 使用本地关键词分类、规则评分和抽取式摘要；
-- 不需要 API key，也不会因缺少密钥退出。
+```dotenv
+AI_INTEL_LLM_PROVIDER=disabled
+AI_INTEL_LLM_API_KEY=
+```
+
+此时采集、正文、处理、grouping、ranking、research 和报告都能运行。
 
 要使用 OpenAI-compatible Chat Completions API，在本地 `.env` 中设置：
 
@@ -160,21 +241,37 @@ AI_INTEL_LLM_MODEL=your-model
 AI_INTEL_LLM_BASE_URL=https://api.example.com/v1
 ```
 
-不要把真实密钥写入 `.env.example` 或提交到 Git。LLM 调用失败时，每个分类、评分或摘要步骤都会分别记录 warning 并回退到本地实现。要接入新的 SDK/provider，只需实现 `app.analysis.interfaces.LLMProvider`；要完全自定义某个研究步骤，则实现 `Classifier`、`ImportanceScorer` 或 `Summarizer`。
+不要提交真实密钥。LLM 调用失败、JSON 无效、schema 不完整或出现输入之外的来源时，会记录 warning 并使用 deterministic fallback。
 
-## Deduplication
+## Configuration
 
-1. URL 规范化会统一 scheme/host、移除 fragment、默认端口、尾部斜杠和常见追踪参数，并排序 query。
-2. 若 URL 未命中，会在配置的近期窗口内使用规范化标题做相似度比较。
-3. 阈值和回看天数由 YAML 配置：
+`config/sources.yaml` 管理 sources 和 pipeline 参数：
 
 ```yaml
 app:
-  title_similarity_threshold: 0.92
-  dedup_lookback_days: 30
+  content_timeout_seconds: 20
+  content_min_length: 200
+  content_max_bytes: 5000000
+  content_batch_size: 20
+  event_time_window_days: 7
+  event_similarity_threshold: 0.62
+  event_batch_size: 500
+  research_top_k: 10
+  prompts_dir: prompts
+
+sources:
+  - name: Example AI Lab
+    url: https://example.com/feed.xml
+    enabled: true
+    max_items: 100
+    tags: [Research]
 ```
 
-阈值越低越容易合并改写标题，也越可能误判；应结合真实数据调优。
+全局 `--config` 和 `--log-level` 选项放在子命令前：
+
+```bash
+python -m app --config config/sources.yaml --log-level DEBUG events --top 10
+```
 
 ## Testing
 
@@ -183,24 +280,39 @@ python -m pytest
 python -m pytest --cov=app --cov-report=term-missing
 ```
 
-测试覆盖配置解析、URL/标题规范化、两种去重、采集流水线、本地分析和 Markdown 报告。
+测试重点覆盖：
 
-## Current MVP Boundaries
+- Phase 1 数据库原地迁移与数据保留
+- content extraction 错误隔离与成功后跳过
+- 完整正文优先进入分类和摘要
+- 同事件 grouping 与不同事件分离
+- 同来源模板文章误合并防护
+- deterministic no-key Research Agent
+- ResearchBrief schema 和 confidence 范围
+- 非法 LLM JSON 回退
+- 虚构 source/evidence 拒绝
+- Research Report 的真实 URL
+- evaluation persistence、评分边界和 summary
 
-- RSS 正文质量取决于 feed；当前不抓取文章落地页补全正文。
-- 标题相似度使用轻量字符串算法，没有语义向量去重。
-- 本地 fallback 是保证工作流可运行的基线，不代表高质量研究判断。
-- SQLite 适合单机 MVP；当前没有任务队列、并发采集、调度器或增量迁移框架。
-- 报告是 Markdown artifact，没有 Dashboard、搜索 UI 或人工审核界面。
-- 信息源列表需要持续维护；站点可能改 URL、反爬或临时不可用。
+## Current Boundaries
 
-## Suggested Next Phases
+- 许多站点会对通用 HTTP 客户端返回 403；系统会回退到 RSS 内容，但正文覆盖率会下降。
+- 当前 grouping 是保守词法方法，不使用 embeddings；漏合并优先于误合并。
+- 默认官方博客源之间同事件交叉报道较少，source diversity 分值通常偏低。
+- deterministic Research Agent 是安全、可运行的基线，不等同于高质量人工行业分析。
+- Event 无自动重建/拆分 UI；grouping 参数变化后的批量重建目前属于运维操作。
+- SQLite 面向单机工作流，没有并发 worker、任务队列或调度器。
+- 没有 Dashboard、搜索 UI 或人工审核界面。
 
-在 Phase 1 数据和指标稳定后，建议按顺序推进：
+## Suggested Phase 3
 
-1. 增加网页正文提取、更多 Collector 和来源健康度监控。
-2. 建立 prompt/version、模型输出校验、费用/延迟与人工质量评估。
-3. 增加 entity/event extraction、跨来源事件聚类与引用追踪。
-4. 引入可调度的增量任务、数据库迁移和观测指标。
-5. 最后再基于已验证的数据契约设计检索、审核或 Dashboard。
+Phase 3 应优先提升证据覆盖和研究质量，而不是增加 UI：
+
+1. 增加更多独立媒体、公司公告、论文与监管来源，建立来源健康度指标。
+2. 加入合法、可配置的站点级正文抓取策略和缓存，改善 403/正文覆盖率。
+3. 建立 10–20 个真实事件人工评测集，比较 prompt/model/fallback 版本。
+4. 在保持可解释性的前提下评估 entity extraction 或轻量 embedding-assisted grouping。
+5. 增加 prompt/version、模型成本、延迟和输出质量观测。
+
+Dashboard 应在数据质量和研究评测稳定之后再考虑。
 

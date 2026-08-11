@@ -1,4 +1,4 @@
-"""AI Industry Intelligence Research Agent MVP."""
+"""AI Industry Intelligence Research Agent."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 

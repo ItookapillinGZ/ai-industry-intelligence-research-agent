@@ -181,6 +181,40 @@ class ArticleRepository:
                     utc_now_iso(),
                     article_id,
                 ),
+
+            )
+    def list_processed(self, limit: int) -> list[StoredArticle]:
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM articles
+                WHERE processing_status = 'processed'
+                ORDER BY COALESCE(published_at, collected_at) DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [article_from_row(row) for row in rows]
+
+    def update_classification(
+        self,
+        article_id: int,
+        classification: ClassificationResult,
+        tags: list[str],
+    ) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                """
+                UPDATE articles
+                SET category = ?, tags = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    classification.category,
+                    json.dumps(tags, ensure_ascii=False),
+                    utc_now_iso(),
+                    article_id,
+                ),
             )
 
     def mark_failed(self, article_id: int) -> None:

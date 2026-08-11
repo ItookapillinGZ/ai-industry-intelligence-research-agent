@@ -127,3 +127,7 @@ class ResearchRepository:
             row = connection.execute("SELECT COUNT(*) AS count FROM research_briefs").fetchone()
         return int(row["count"])
 
+
+# Phase 2.5 uses the additive run table so deterministic, mock, and live results
+# cannot overwrite one another. The Phase 2 implementation above remains migration context.
+from app.storage.research_run_repository import ResearchRunRepository as ResearchRepository

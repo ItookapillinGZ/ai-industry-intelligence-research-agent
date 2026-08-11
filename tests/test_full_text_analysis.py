@@ -26,6 +26,6 @@ def test_analysis_prefers_full_content_over_rss_text() -> None:
         content_status="fetched",
         content_length=76,
     )
-    assert KeywordClassifier().classify(article).category == "AIGC"
+    assert KeywordClassifier().classify(article).category == "Multimodal / AIGC"
     assert "video generation" in ExtractiveSummarizer().summarize(article)
 

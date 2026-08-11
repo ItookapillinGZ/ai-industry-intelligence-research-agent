@@ -69,7 +69,8 @@ def test_deterministic_research_brief_schema(repository: ArticleRepository) -> N
     assert brief.key_facts[0]["type"] == "reported_fact"
     assert 0 <= brief.confidence <= 1
     assert brief.sources[0].url == "https://example.com/real-source"
-    assert "Medium relevance" in brief.ugc_relevance
+    assert brief.ugc_relevance.level == "medium"
+    assert "content_creation" in brief.ugc_relevance.affected_areas
 
 
 def test_invalid_llm_json_gracefully_falls_back(

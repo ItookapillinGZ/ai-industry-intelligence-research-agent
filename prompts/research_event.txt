@@ -1,10 +1,10 @@
-Research the following event using only the supplied articles.
+Research the following event using only the supplied Evidence Pack.
 
 EVENT:
 {{EVENT_JSON}}
 
-ARTICLES:
-{{ARTICLES_JSON}}
+EVIDENCE PACK:
+{{EVIDENCE_PACK_JSON}}
 
 Return this exact JSON shape:
 {
@@ -15,27 +15,31 @@ Return this exact JSON shape:
     {
       "statement": "string",
       "type": "reported_fact or inference",
-      "source_article_ids": [1]
+      "source_ids": ["src_exact_supplied_id"]
     }
   ],
   "background": "string",
   "why_it_matters": "string",
   "industry_impact": "string",
-  "ugc_relevance": "string",
+  "ugc_relevance": {
+    "level": "low or medium or high",
+    "reason": "string",
+    "affected_areas": [
+      "creator_tools or content_creation or short_video or distribution or community or moderation"
+    ]
+  },
   "evidence": [
     {
       "claim": "string",
-      "article_id": 1,
-      "url": "an exact supplied article URL",
+      "source_id": "src_exact_supplied_id",
+      "url": "the exact URL paired with that source_id",
       "excerpt": "short evidence excerpt or close paraphrase"
     }
   ],
   "sources": [
     {
-      "article_id": 1,
-      "title": "exact supplied title",
-      "source": "exact supplied source",
-      "url": "exact supplied URL"
+      "source_id": "src_exact_supplied_id",
+      "url": "the exact URL paired with that source_id"
     }
   ],
   "uncertainties": ["string"],
@@ -43,6 +47,8 @@ Return this exact JSON shape:
   "tags": ["string"]
 }
 
-Confidence must be between 0 and 1. Every source, evidence item, and source_article_id must
-refer to a supplied article. Do not silently resolve conflicts or convert inference into fact.
+Confidence must be between 0 and 1. Every source, evidence item, and source_id must refer to
+an exact supplied Evidence Pack item. Do not silently resolve conflicts or convert inference
+into fact. Mention insufficient source coverage in uncertainties when the Evidence Pack marks
+coverage_status as "insufficient".
 

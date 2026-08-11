@@ -87,6 +87,7 @@ class Event:
     importance_score: float
     article_count: int
     source_count: int
+    importance_factors: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -96,21 +97,73 @@ class EventGroupingStats:
     articles_linked: int = 0
 
 
+
+
+@dataclass(slots=True)
+class EvidenceItem:
+    source_id: str
+    title: str
+    source: str
+    url: str
+    source_type: str
+    article_id: int | None = None
+    published_at: str | None = None
+    snippet: str = ""
+    content: str = ""
+    is_seed: bool = False
+
+
+@dataclass(slots=True)
+class EvidencePack:
+    event_id: int
+    mode: str
+    queries: list[str]
+    items: list[EvidenceItem]
+    coverage_status: str
+    coverage_note: str
+    errors: list[str] = field(default_factory=list)
+    id: int | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+@dataclass(slots=True)
+class UGCRelevance:
+    level: str
+    reason: str
+    affected_areas: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class ImportanceBreakdown:
+    novelty: float
+    industry_magnitude: float
+    source_authority: float
+    source_diversity: float
+    ecosystem_impact: float
+    developer_impact: float
+    creator_impact: float
+    recency: float
+    total: float
+
 @dataclass(slots=True)
 class ResearchSource:
-    article_id: int
+    article_id: int | None
     title: str
     source: str
     url: str
 
 
+    source_id: str = ""
+    source_type: str = "other"
 @dataclass(slots=True)
 class EvidenceReference:
     claim: str
-    article_id: int
+    article_id: int | None
     url: str
     excerpt: str
 
+    source_id: str = ""
 
 @dataclass(slots=True)
 class ResearchBrief:
@@ -122,13 +175,16 @@ class ResearchBrief:
     background: str
     why_it_matters: str
     industry_impact: str
-    ugc_relevance: str
+    ugc_relevance: UGCRelevance
     evidence: list[EvidenceReference]
     sources: list[ResearchSource]
     uncertainties: list[str]
     confidence: float
     tags: list[str]
     provider_name: str
+    research_mode: str = "deterministic"
+    generation_type: str = "deterministic"
+    evidence_pack_id: int | None = None
     id: int | None = None
     created_at: str | None = None
     updated_at: str | None = None

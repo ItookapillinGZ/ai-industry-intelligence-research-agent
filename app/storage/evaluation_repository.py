@@ -21,13 +21,13 @@ class EvaluationRepository:
         now = utc_now_iso()
         with self.database.connect() as connection:
             exists = connection.execute(
-                "SELECT 1 FROM research_briefs WHERE id = ?", (result.research_brief_id,)
+                "SELECT 1 FROM research_brief_runs WHERE id = ?", (result.research_brief_id,)
             ).fetchone()
             if not exists:
                 raise ValueError(f"ResearchBrief not found: {result.research_brief_id}")
             cursor = connection.execute(
                 """
-                INSERT INTO evaluations (
+                INSERT INTO research_evaluations (
                     research_brief_id, evaluator, factuality, source_coverage,
                     relevance, insightfulness, clarity, notes, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -53,8 +53,8 @@ class EvaluationRepository:
             rows = connection.execute(
                 """
                 SELECT e.*, rb.headline
-                FROM evaluations e
-                JOIN research_briefs rb ON rb.id = e.research_brief_id
+                FROM research_evaluations e
+                JOIN research_brief_runs rb ON rb.id = e.research_brief_id
                 ORDER BY e.created_at DESC, e.id DESC
                 """
             ).fetchall()
@@ -78,7 +78,36 @@ class EvaluationRepository:
         ]
 
     def count(self) -> int:
+
         with self.database.connect() as connection:
-            row = connection.execute("SELECT COUNT(*) AS count FROM evaluations").fetchone()
+            row = connection.execute("SELECT COUNT(*) AS count FROM research_evaluations").fetchone()
         return int(row["count"])
+    def list_with_context(
+        self,
+    ) -> list[tuple[EvaluationResult, str, str, str, int]]:
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT e.*, rb.headline, rb.research_mode, rb.generation_type, rb.event_id
+                FROM research_evaluations e
+                JOIN research_brief_runs rb ON rb.id = e.research_brief_id
+                ORDER BY e.created_at DESC, e.id DESC
+                """
+            ).fetchall()
+        return [
+            (
+                EvaluationResult(
+                    id=row["id"], research_brief_id=row["research_brief_id"],
+                    evaluator=row["evaluator"], factuality=row["factuality"],
+                    source_coverage=row["source_coverage"], relevance=row["relevance"],
+                    insightfulness=row["insightfulness"], clarity=row["clarity"],
+                    notes=row["notes"], created_at=row["created_at"],
+                ),
+                row["headline"],
+                row["research_mode"],
+                row["generation_type"],
+                row["event_id"],
+            )
+            for row in rows
+        ]
 

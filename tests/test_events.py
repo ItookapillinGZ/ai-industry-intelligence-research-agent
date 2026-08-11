@@ -62,7 +62,8 @@ def test_same_event_groups_cross_source_articles(repository: ArticleRepository) 
     assert event.article_count == 2
     assert event.source_count == 2
     ranked = EventRankingService(event_repository, DeterministicEventScorer()).rank(1)
-    assert ranked[0].importance_score > 7.0
+    assert ranked[0].importance_score > 2.0
+    assert ranked[0].importance_factors["source_diversity"] > 0
 
 
 def test_distinct_events_are_not_forced_together(repository: ArticleRepository) -> None:

@@ -32,3 +32,6 @@ class DeterministicEventScorer:
             2,
         )
 
+
+# Phase 2.5 keeps the import path stable while using the auditable scorer.
+from app.events.importance import AuditableEventScorer as DeterministicEventScorer

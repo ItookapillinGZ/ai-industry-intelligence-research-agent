@@ -262,6 +262,88 @@ app:
 sources:
   - name: Example AI Lab
     url: https://example.com/feed.xml
+
+## Phase 2.5: Research Quality Validation
+
+Phase 2.5 is the current project boundary. Phase 3 has not started.
+
+The research path is now explicit:
+
+    Event
+      -> Evidence Gathering
+      -> Evidence Pack
+      -> Evidence-bound Analysis
+      -> ResearchBrief
+
+Evidence Gathering uses deterministic queries derived from the event title, tags, and named
+entities. The first implementation uses Bing News RSS and the existing standard-library HTTP
+path. Search failures are logged in the Evidence Pack and do not terminate the pipeline.
+Every candidate keeps its real URL, source name, and source type: official, independent,
+community, research, or other. URLs are normalized and deduplicated before analysis. The
+selection target is one official source plus one or two independent sources; an Evidence Pack
+records insufficient coverage when this is not achieved.
+
+Research runs are stored separately by research_mode (deterministic, single_source_llm, or
+multi_source_llm) and generation_type (deterministic, mock, live, fallback, or
+legacy_unverified). This prevents deterministic, mock, or fallback output from overwriting a
+live LLM result. Mock output is test-only validation and must never be reported as a successful
+live call.
+
+### Phase 2.5 commands
+
+    python -m app reclassify --limit 1000
+    python -m app ranking-audit --top 10
+    python -m app gather-evidence --top 10
+
+    python -m app research --mode deterministic --top 10 --force
+    python -m app research --mode single-source-llm --top 10 --force
+    python -m app research --mode multi-source-llm --top 10 --force
+
+    python -m app research-report --mode deterministic --top 10
+    python -m app research-report --mode multi-source-llm --top 10
+    python -m app evaluation-template --top 10
+    python -m app comparison-report --top 10
+
+When no API key exists, the two LLM commands are explicitly logged and stored as fallback;
+the comparison report states that live validation is blocked.
+
+### Category, ranking, and UGC schemas
+
+The Phase 2.5 taxonomy is: Foundation Model, AI Agent, AI Coding, Multimodal / AIGC,
+AI Product, Enterprise Adoption, Research, Open Source, AI Safety, Cybersecurity,
+Policy / Regulation, Funding / Business, and Other.
+
+Importance ranking stores an audit breakdown for novelty, industry magnitude, source
+authority, source diversity, ecosystem impact, developer impact, creator/UGC impact, and
+recency. No title or article receives an article-specific hard-coded bonus.
+
+UGC relevance is a structured object with level, reason, and affected_areas. Allowed areas
+are creator_tools, content_creation, short_video, distribution, community, and moderation.
+Unrelated events must remain low with no invented impact.
+
+### Live LLM validation
+
+Real credentials remain local-only. Copy .env.example to .env, then set:
+
+    AI_INTEL_LLM_PROVIDER=openai_compatible
+    AI_INTEL_LLM_API_KEY=your-real-key
+    AI_INTEL_LLM_MODEL=your-model
+    AI_INTEL_LLM_BASE_URL=https://api.openai.com/v1
+
+For the required five-event comparison, run:
+
+    python -m app research --mode single-source-llm --top 5 --force
+    python -m app research --mode multi-source-llm --top 5 --force
+
+This makes ten model calls: one single-source and one multi-source call for each event.
+Each call sends the event metadata plus the selected Evidence Pack fields: source IDs,
+titles, source names/types, real URLs, publication dates, snippets, and locally stored
+article content where available. API keys, environment variables, database files, logs,
+and unrelated articles are not included in prompts.
+
+Every live or mock research call uses prompts/research_system.txt and
+prompts/research_event.txt. Output must pass strict JSON, source-ID, URL, confidence,
+key-fact, and structured-UGC validation before it is saved.
     enabled: true
     max_items: 100
     tags: [Research]

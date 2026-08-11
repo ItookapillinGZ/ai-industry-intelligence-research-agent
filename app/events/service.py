@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import asdict
+
 import logging
 
 from app.events.interfaces import EventGrouper, EventScorer
@@ -67,6 +69,11 @@ class EventRankingService:
     def rank(self, top_k: int) -> list[Event]:
         for event in self.repository.list_events():
             articles = self.repository.list_articles(event.id)
-            self.repository.update_importance(event.id, self.scorer.score(event, articles))
+            explain = getattr(self.scorer, "explain", None)
+            if callable(explain):
+                breakdown = explain(event, articles)
+                self.repository.update_importance(event.id, breakdown.total, asdict(breakdown))
+            else:
+                self.repository.update_importance(event.id, self.scorer.score(event, articles))
         return self.repository.list_events(limit=top_k)
 

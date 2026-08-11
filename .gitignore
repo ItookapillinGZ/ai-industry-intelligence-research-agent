@@ -30,6 +30,7 @@ data/*
 !data/.gitkeep
 reports/*
 !reports/.gitkeep
+evaluation/research_quality_template_*.json
 logs/
 
 .idea/

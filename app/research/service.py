@@ -33,7 +33,14 @@ class ResearchService:
         stats = ResearchStats()
         for event in self.event_repository.list_events(limit=top_k):
             stats.considered += 1
-            if self.research_repository.get_by_event(event.id) and not force:
+            research_mode = getattr(self.agent, "research_mode", None)
+            generation_type = getattr(self.agent, "generation_type", None)
+            existing = self.research_repository.get_by_event(
+                event.id,
+                research_mode=research_mode,
+                generation_type=generation_type,
+            )
+            if existing and not force:
                 stats.skipped += 1
                 continue
             try:

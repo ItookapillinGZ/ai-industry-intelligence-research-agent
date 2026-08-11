@@ -3,14 +3,7 @@ from __future__ import annotations
 import re
 
 from app.models import ClassificationResult, StoredArticle
-
-CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "AI Agent": ("agent", "agentic", "multi-agent", "tool use", "智能体"),
-    "AI Coding": ("coding", "code generation", "developer", "copilot", "ide", "编程"),
-    "LLM": ("llm", "language model", "transformer", "reasoning model", "大模型"),
-    "AIGC": ("image generation", "video generation", "diffusion", "text-to-video", "生成式"),
-    "AI Product": ("launch", "product", "feature", "platform", "assistant", "发布"),
-}
+from app.analysis.taxonomy import classify_text
 
 
 def _analysis_content(article: StoredArticle) -> str:
@@ -23,15 +16,7 @@ def _article_text(article: StoredArticle) -> str:
 
 class KeywordClassifier:
     def classify(self, article: StoredArticle) -> ClassificationResult:
-        text = _article_text(article)
-        category_scores = {
-            category: sum(1 for keyword in keywords if keyword in text)
-            for category, keywords in CATEGORY_KEYWORDS.items()
-        }
-        category = max(category_scores, key=category_scores.get)
-        if category_scores[category] == 0:
-            category = "Other"
-        tags = [keyword for keyword in CATEGORY_KEYWORDS.get(category, ()) if keyword in text][:5]
+        category, tags = classify_text(article.title, _analysis_content(article))
         return ClassificationResult(category=category, tags=tags)
 
 

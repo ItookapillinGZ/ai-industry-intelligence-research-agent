@@ -115,3 +115,8 @@ class DeterministicResearchAgent:
             provider_name=self.provider_name,
         )
 
+
+# Phase 2.5 implementation keeps the legacy class above as migration context.
+from app.research.evidence_analyst import (
+    DeterministicEvidenceAnalyst as DeterministicResearchAgent,
+)

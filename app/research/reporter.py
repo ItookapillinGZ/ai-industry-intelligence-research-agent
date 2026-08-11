@@ -16,8 +16,13 @@ class ResearchReportGenerator:
         self.repository = repository
         self.reports_dir = reports_dir
 
-    def generate(self, limit: int) -> Path:
-        items = self.repository.list_with_events(limit)
+    def generate(
+        self,
+        limit: int,
+        research_mode: str | None = None,
+        generation_type: str | None = None,
+    ) -> Path:
+        items = self.repository.list_with_events(limit, research_mode, generation_type)
         now = datetime.now(timezone.utc)
         self.reports_dir.mkdir(parents=True, exist_ok=True)
         path = self.reports_dir / f"research_{now.strftime('%Y%m%d_%H%M%S')}.md"
@@ -53,6 +58,7 @@ class ResearchReportGenerator:
             "",
             f"- **Importance:** {importance:.2f}/10",
             f"- **Confidence:** {brief.confidence:.2f}",
+            f"- **Research mode:** {brief.research_mode} ({brief.generation_type})",
             f"- **Category:** {category}",
             "",
             "#### What happened",
@@ -64,7 +70,8 @@ class ResearchReportGenerator:
         ]
         for fact in brief.key_facts:
             kind = fact.get("type", "reported_fact")
-            source_ids = ", ".join(str(item) for item in fact.get("source_article_ids", []))
+            ids = fact.get("source_ids", fact.get("source_article_ids", []))
+            source_ids = ", ".join(str(item) for item in ids)
             lines.append(f"- **{kind}:** {fact.get('statement', '')} _(articles: {source_ids or '—'})_")
         lines.extend(
             [
@@ -83,7 +90,9 @@ class ResearchReportGenerator:
                 "",
                 "#### UGC relevance",
                 "",
-                brief.ugc_relevance,
+                f"- **Level:** {brief.ugc_relevance.level}",
+                f"- **Reason:** {brief.ugc_relevance.reason}",
+                f"- **Affected areas:** {', '.join(brief.ugc_relevance.affected_areas) or 'none'}",
                 "",
                 "#### Uncertainties",
                 "",

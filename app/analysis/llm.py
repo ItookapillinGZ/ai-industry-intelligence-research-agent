@@ -6,6 +6,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from app.analysis.interfaces import LLMProvider
+from app.analysis.taxonomy import CATEGORIES
 from app.models import ClassificationResult, StoredArticle
 
 
@@ -78,7 +79,6 @@ def _parse_json_object(value: str) -> dict:
 
 
 class LLMClassifier:
-    CATEGORIES = ("AI Agent", "AI Coding", "LLM", "AIGC", "AI Product", "Other")
 
     def __init__(self, provider: LLMProvider) -> None:
         self.provider = provider
@@ -87,12 +87,12 @@ class LLMClassifier:
         response = self.provider.generate(
             "Classify AI industry articles. Return strict JSON only.",
             _article_prompt(article)
-            + f"\nChoose one category from {self.CATEGORIES}. "
+            + f"\nChoose one category from {CATEGORIES}. "
             'Return {"category":"...","tags":["..."]}.',
         )
         data = _parse_json_object(response)
         category = str(data.get("category", "Other"))
-        if category not in self.CATEGORIES:
+        if category not in CATEGORIES:
             category = "Other"
         tags = [str(tag) for tag in data.get("tags", []) if str(tag).strip()][:8]
         return ClassificationResult(category=category, tags=tags)

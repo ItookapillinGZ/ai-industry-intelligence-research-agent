@@ -151,3 +151,11 @@ class LLMResearchAgent:
             provider_name=self.provider_name,
         )
 
+
+# Phase 2.5 validates source IDs and URLs against an Evidence Pack.
+from app.research.evidence_analyst import (
+    EvidenceBoundLLMAnalyst as LLMResearchAgent,
+)
+from app.research.evidence_analyst import (
+    ResearchValidationError as ResearchValidationError,
+)

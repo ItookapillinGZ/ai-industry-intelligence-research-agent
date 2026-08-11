@@ -20,8 +20,21 @@ class EvaluationService:
         for item in items:
             if not isinstance(item, dict):
                 raise ValueError("Each evaluation must be an object")
-            saved.append(
+            status = item.get("status")
+            if status is not None and status != "ready_for_human_review":
+                continue
+            required = (
+                "research_brief_id",
+                "factuality",
+                "source_coverage",
+                "relevance",
+                "insightfulness",
+                "clarity",
+            )
+            if any(item.get(key) is None for key in required):
+                raise ValueError("Ready evaluation entries require a brief id and all five scores")
                 self.repository.save(
+            saved.append(
                     EvaluationResult(
                         research_brief_id=int(item["research_brief_id"]),
                         evaluator=str(item.get("evaluator", "anonymous")),

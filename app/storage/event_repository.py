@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from sqlite3 import Row
 
 from app.models import Event, StoredArticle, utc_now_iso
@@ -17,6 +18,9 @@ def event_from_row(row: Row) -> Event:
         updated_at=row["updated_at"],
         importance_score=float(row["importance_score"] or 0),
         article_count=int(row["article_count"] or 0),
+        importance_factors=json.loads(row["importance_factors"] or "{}")
+        if "importance_factors" in row.keys()
+        else {},
         source_count=int(row["source_count"] or 0),
     )
 
@@ -101,11 +105,46 @@ class EventRepository:
             row = connection.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
         return event_from_row(row)
 
-    def update_importance(self, event_id: int, score: float) -> None:
+    def update_importance(
+        self,
+        event_id: int,
+        score: float,
+        factors: dict[str, float] | None = None,
+    ) -> None:
         with self.database.connect() as connection:
             connection.execute(
-                "UPDATE events SET importance_score = ?, updated_at = ? WHERE id = ?",
-                (max(0.0, min(10.0, score)), utc_now_iso(), event_id),
+                """
+                UPDATE events
+                SET importance_score = ?, importance_factors = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    max(0.0, min(10.0, score)),
+                    json.dumps(factors or {}, ensure_ascii=False),
+                    utc_now_iso(),
+                    event_id,
+                ),
+
+            )
+    def refresh_categories(self) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                """
+                UPDATE events
+                SET category = COALESCE(
+                    (
+                        SELECT a.category
+                        FROM event_articles ea
+                        JOIN articles a ON a.id = ea.article_id
+                        WHERE ea.event_id = events.id
+                        ORDER BY a.importance_score DESC, a.id ASC
+                        LIMIT 1
+                    ),
+                    category
+                ),
+                updated_at = ?
+                """,
+                (utc_now_iso(),),
             )
 
     def get(self, event_id: int) -> Event | None:

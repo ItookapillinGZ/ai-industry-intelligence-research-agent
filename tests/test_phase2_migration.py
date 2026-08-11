@@ -61,5 +61,8 @@ def test_phase1_database_migrates_without_data_loss(tmp_path: Path) -> None:
     assert title == "Existing article"
     assert {"content", "content_status", "content_length", "content_fetched_at"} <= columns
     assert {"events", "event_articles", "research_briefs", "evaluations"} <= tables
-    assert versions == [1, 2]
+    assert {
+        "evidence_packs", "research_brief_runs", "research_evaluations"
+    } <= tables
+    assert versions == [1, 2, 3]
 
